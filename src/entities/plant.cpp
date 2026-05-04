@@ -4,7 +4,7 @@ Plant::Plant(Vector3 startPosition) : Entity(startPosition){
 
 }
 
-void Plant::Update(float deltaTime){
+void Plant::Update(float deltaTime, World* world){
 
 }
 

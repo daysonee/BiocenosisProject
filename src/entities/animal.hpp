@@ -5,7 +5,8 @@
 enum class AnimalState{
     IDLE,
     WANDERING,
-    HUNGRY
+    HUNGRY,
+    FLEEING
 };
 
 class Animal : public Entity{

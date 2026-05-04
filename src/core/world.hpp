@@ -13,4 +13,6 @@ public:
 
     void Update(float deltaTime);
     void Draw();
+
+    const std::vector<std::unique_ptr<Entity>>& GetEntities() const {return entities;}
 };

@@ -3,6 +3,7 @@
 #include "entities/plant.hpp"
 #include "entities/animal.hpp"
 #include "entities/sheep.hpp"
+#include "entities/wolf.hpp"
 #include <memory>
 
 int main(){
@@ -16,6 +17,7 @@ int main(){
     myWorld.AddEntity(std::make_unique<Plant>((Vector3){5.0f, 0.0f, -3.0f }));
     myWorld.AddEntity(std::make_unique<Plant>((Vector3){-4.0f, 0.0f, 2.0f }));
     myWorld.AddEntity(std::make_unique<Sheep>((Vector3){1.0f, 1.0f, 1.0f}));
+    myWorld.AddEntity(std::make_unique<Wolf>((Vector3){ 10.0f, 0.0f, 10.0f }));
 
     Camera3D camera = { 0 };
     camera.position = (Vector3){10.0f, 10.0f, 10.0f};

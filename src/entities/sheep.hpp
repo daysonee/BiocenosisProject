@@ -8,8 +8,9 @@ public:
 
     ~Sheep() override = default;
 
-    void Update(float deltaTime) override;
+    void Update(float deltaTime, World* world) override;
     void Draw() override;
 
     float stateTimer;
+    Entity* targetHunter;
 };

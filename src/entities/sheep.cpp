@@ -1,4 +1,6 @@
 #include "sheep.hpp"
+#include "wolf.hpp"
+#include "../core/world.hpp"
 #include <raymath.h>
 
 Sheep::Sheep(Vector3 startPosition) : Animal(startPosition){
@@ -6,13 +8,33 @@ Sheep::Sheep(Vector3 startPosition) : Animal(startPosition){
     state = AnimalState::WANDERING;
 
     targetPosition = (Vector3){5.0f, 0.0f, 5.0f};
+
+    targetHunter = nullptr;
 }
 
-void Sheep::Update(float deltaTime){
+void Sheep::Update(float deltaTime, World* world){
     hunger -= 1.0f * deltaTime;
 
     if (hunger < 50.0f){
         state = AnimalState::HUNGRY;
+    }
+
+    
+    for (const auto& entity : world->GetEntities()){
+        if (!entity->IsAlive()) continue;
+
+        Wolf* wolf = dynamic_cast<Wolf*>(entity.get());
+        if (wolf != nullptr){
+            if(Vector3Distance(position, wolf->GetPosition()) < 5.0f){
+                state = AnimalState::FLEEING;
+                targetHunter = wolf;
+                break;
+            }
+        }
+    }
+
+    if (state == AnimalState::FLEEING){
+        
     }
 
 

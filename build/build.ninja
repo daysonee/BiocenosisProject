@@ -89,6 +89,14 @@ build CMakeFiles/Biocenosis.dir/src/entities/sheep.cpp.obj: CXX_COMPILER__Biocen
   OBJECT_DIR = CMakeFiles\Biocenosis.dir
   OBJECT_FILE_DIR = CMakeFiles\Biocenosis.dir\src\entities
 
+build CMakeFiles/Biocenosis.dir/src/entities/wolf.cpp.obj: CXX_COMPILER__Biocenosis_unscanned_Debug E$:/Code/C_C++/BiocenosisProject/src/entities/wolf.cpp || cmake_object_order_depends_target_Biocenosis
+  DEFINES = -DGRAPHICS_API_OPENGL_33 -DPLATFORM_DESKTOP
+  DEP_FILE = CMakeFiles\Biocenosis.dir\src\entities\wolf.cpp.obj.d
+  FLAGS = -g -std=gnu++17
+  INCLUDES = -IE:/Code/C_C++/BiocenosisProject/build/_deps/raylib-src/src
+  OBJECT_DIR = CMakeFiles\Biocenosis.dir
+  OBJECT_FILE_DIR = CMakeFiles\Biocenosis.dir\src\entities
+
 build CMakeFiles/Biocenosis.dir/src/main.cpp.obj: CXX_COMPILER__Biocenosis_unscanned_Debug E$:/Code/C_C++/BiocenosisProject/src/main.cpp || cmake_object_order_depends_target_Biocenosis
   DEFINES = -DGRAPHICS_API_OPENGL_33 -DPLATFORM_DESKTOP
   DEP_FILE = CMakeFiles\Biocenosis.dir\src\main.cpp.obj.d
@@ -105,7 +113,7 @@ build CMakeFiles/Biocenosis.dir/src/main.cpp.obj: CXX_COMPILER__Biocenosis_unsca
 #############################################
 # Link the executable Biocenosis.exe
 
-build Biocenosis.exe: CXX_EXECUTABLE_LINKER__Biocenosis_Debug CMakeFiles/Biocenosis.dir/src/core/entity.cpp.obj CMakeFiles/Biocenosis.dir/src/core/world.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/animal.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/plant.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/sheep.cpp.obj CMakeFiles/Biocenosis.dir/src/main.cpp.obj | _deps/raylib-build/raylib/libraylib.a || _deps/raylib-build/raylib/external/glfw/src/glfw _deps/raylib-build/raylib/libraylib.a
+build Biocenosis.exe: CXX_EXECUTABLE_LINKER__Biocenosis_Debug CMakeFiles/Biocenosis.dir/src/core/entity.cpp.obj CMakeFiles/Biocenosis.dir/src/core/world.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/animal.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/plant.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/sheep.cpp.obj CMakeFiles/Biocenosis.dir/src/entities/wolf.cpp.obj CMakeFiles/Biocenosis.dir/src/main.cpp.obj | _deps/raylib-build/raylib/libraylib.a || _deps/raylib-build/raylib/external/glfw/src/glfw _deps/raylib-build/raylib/libraylib.a
   FLAGS = -g
   LINK_LIBRARIES = _deps/raylib-build/raylib/libraylib.a  -lopengl32  -lglu32  -lwinmm  -lkernel32 -luser32 -lgdi32 -lwinspool -lshell32 -lole32 -loleaut32 -luuid -lcomdlg32 -ladvapi32
   OBJECT_DIR = CMakeFiles\Biocenosis.dir

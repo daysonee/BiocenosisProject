@@ -6,12 +6,16 @@ void World::AddEntity(std::unique_ptr<Entity> entity){
 
 void World::Update(float deltaTime){
     for (auto& entity : entities){
-        entity->Update(deltaTime);
+        if (entity -> IsAlive()){
+            entity->Update(deltaTime, this);
+        }
     }
 }
 
 void World::Draw(){
     for (auto& entity : entities){
-        entity->Draw(); 
+        if (entity->IsAlive()){
+            entity->Draw(); 
+        }
     }
 }

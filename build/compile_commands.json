@@ -31,6 +31,12 @@
 },
 {
   "directory": "E:/Code/C_C++/BiocenosisProject/build",
+  "command": "C:\\Strawberry\\c\\bin\\g++.exe -DGRAPHICS_API_OPENGL_33 -DPLATFORM_DESKTOP -IE:/Code/C_C++/BiocenosisProject/build/_deps/raylib-src/src -g -std=gnu++17 -o CMakeFiles\\Biocenosis.dir\\src\\entities\\wolf.cpp.obj -c E:\\Code\\C_C++\\BiocenosisProject\\src\\entities\\wolf.cpp",
+  "file": "E:\\Code\\C_C++\\BiocenosisProject\\src\\entities\\wolf.cpp",
+  "output": "CMakeFiles\\Biocenosis.dir\\src\\entities\\wolf.cpp.obj"
+},
+{
+  "directory": "E:/Code/C_C++/BiocenosisProject/build",
   "command": "C:\\Strawberry\\c\\bin\\g++.exe -DGRAPHICS_API_OPENGL_33 -DPLATFORM_DESKTOP -IE:/Code/C_C++/BiocenosisProject/build/_deps/raylib-src/src -g -std=gnu++17 -o CMakeFiles\\Biocenosis.dir\\src\\main.cpp.obj -c E:\\Code\\C_C++\\BiocenosisProject\\src\\main.cpp",
   "file": "E:\\Code\\C_C++\\BiocenosisProject\\src\\main.cpp",
   "output": "CMakeFiles\\Biocenosis.dir\\src\\main.cpp.obj"

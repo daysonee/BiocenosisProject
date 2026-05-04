@@ -2,6 +2,8 @@
 
 #include "raylib.h"
 
+class World;
+
 class Entity {
     protected: 
         Vector3 position;
@@ -10,8 +12,11 @@ class Entity {
         Entity(Vector3 startPosition);
 
         virtual ~Entity() = default;
-        virtual void Update(float deltaTime) = 0;
+        virtual void Update(float deltaTime, World *world) = 0;
         virtual void Draw() = 0;
 
         Vector3 GetPosition();
+
+        bool IsAlive() const {return isAlive; }
+        void Die() { isAlive = false; }
 };
