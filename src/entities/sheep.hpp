@@ -3,6 +3,12 @@
 #include "animal.hpp"
 
 class Sheep : public Animal{
+private:
+    float myWalkSpeed;
+    float myRunSpeed;
+    float myVisionRadius;
+    float myHungerThreshold;
+    float myMaxHunger;
 public:
     Sheep(Vector3 startPosition);
 

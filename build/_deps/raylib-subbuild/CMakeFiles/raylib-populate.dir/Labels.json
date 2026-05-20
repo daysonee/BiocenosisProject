@@ -2,37 +2,37 @@
 	"sources" : 
 	[
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate-complete.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/CMakeFiles/raylib-populate-complete.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-build.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-build.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-configure.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-configure.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-download.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-download.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-install.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-install.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-mkdir.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-mkdir.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-patch.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-patch.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-test.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-test.rule"
 		},
 		{
-			"file" : "E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-update.rule"
+			"file" : "/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/src/raylib-populate-stamp/raylib-populate-update.rule"
 		}
 	],
 	"target" : 

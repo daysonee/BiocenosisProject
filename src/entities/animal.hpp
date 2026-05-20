@@ -2,6 +2,8 @@
 
 #include "../core/entity.hpp"
 
+class World;
+
 enum class AnimalState{
     IDLE,
     WANDERING,
@@ -21,5 +23,5 @@ public:
     Animal(Vector3 startPosition);
     virtual ~Animal() override = default;
 
-    void MoveTowardsTarget(float deltaTime);
+    void MoveTowardsTarget(float deltaTime, World* world);
 };

@@ -44,7 +44,7 @@ void Wolf::Update(float deltaTime, World* world){
 
         if (targetPrey != nullptr){
             targetPosition = targetPrey->GetPosition();
-            MoveTowardsTarget(deltaTime);
+            MoveTowardsTarget(deltaTime, world);
 
             if (closestDistance < 1.0f){
                 targetPrey -> Die();

@@ -3,13 +3,13 @@
 # No other meaning or use of this file is supported.
 
 method=git
-command=C:/Strawberry/c/bin/cmake.exe;-P;E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/tmp/raylib-populate-gitclone.cmake
-source_dir=E:/Code/C_C++/BiocenosisProject/build/_deps/raylib-src
-work_dir=E:/Code/C_C++/BiocenosisProject/build/_deps
+command=/opt/homebrew/bin/cmake;-DCMAKE_MESSAGE_LOG_LEVEL=VERBOSE;-P;/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-subbuild/raylib-populate-prefix/tmp/raylib-populate-gitclone.cmake
+source_dir=/Users/daysonee/Projects/BiocenosisProject/build/_deps/raylib-src
+work_dir=/Users/daysonee/Projects/BiocenosisProject/build/_deps
 repository=https://github.com/raysan5/raylib.git
 remote=origin
 init_submodules=TRUE
 recurse_submodules=--recursive
 submodules=
 CMP0097=NEW
-
+      

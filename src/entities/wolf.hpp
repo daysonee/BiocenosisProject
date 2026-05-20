@@ -3,7 +3,7 @@
 
 class Wolf : public Animal{
 private:
-    Entity* targetPrey;
+    Sheep* targetPrey;
 
 public:
     Wolf(Vector3 startPosition);
