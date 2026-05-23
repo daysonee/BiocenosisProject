@@ -7,7 +7,17 @@
 #include <memory>
 
 int main(){
-    InitWindow(1280, 720, "Simulator");
+
+    SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_FULLSCREEN_MODE);
+
+    int currentMonitor = GetCurrentMonitor();
+    int screenWidth = GetMonitorWidth(currentMonitor);
+    int screenHeight = GetMonitorHeight(currentMonitor);
+
+
+    InitWindow(screenWidth, screenHeight, "Simulator");
+
+    DisableCursor();
 
     SetTargetFPS(60);
 
@@ -30,6 +40,15 @@ int main(){
 
         float dt = GetFrameTime();
 
+        if (IsKeyPressed(KEY_LEFT_ALT)) {
+            if (IsCursorHidden()) EnableCursor();
+            else DisableCursor();
+        }
+
+        if (IsKeyPressed(KEY_F11)) {
+            ToggleFullscreen();
+        }
+
         UpdateCamera(&camera, CAMERA_FREE);
 
         myWorld.Update(dt);
@@ -42,6 +61,7 @@ int main(){
         EndMode3D();
         EndDrawing();
     }
+    EnableCursor();
     CloseWindow();
     return 0;
 }
