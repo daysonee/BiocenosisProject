@@ -5,34 +5,124 @@
 #include "../entities/plant.hpp"
 #include "../utils/noise.hpp"
 #include <string>
+#include <rlgl.h>
 
 World::World(){
-    plantSpawnTimer = PLANT_SPAWN_DELAY;
+
+    plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
     plantCount = 0;
     sheepCount = 0;
     wolfCount = 0;
 
+    offsetX = (float)GetRandomValue(-5000, 5000); //рандомный сид
+    offsetZ = (float)GetRandomValue(-5000, 5000);
+    GenerateTerrainMesh();
+
     currentWeather = WeatherState::SUNNY;
-    weatherTimer = (float)GetRandomValue(10, 15);
+    weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
+}
+
+World::~World(){
+    UnloadModel(terrainModel);
 }
 
 void World::ChangeWeather(){
     if (currentWeather == WeatherState::SUNNY){
         currentWeather = WeatherState::RAINING;
-        weatherTimer = (float)GetRandomValue(10, 15);
+        weatherTimer = (float)GetRandomValue(Config::World::WEATHER_RAIN_MIN, Config::World::WEATHER_RAIN_MAX);
     } else{
         currentWeather = WeatherState::SUNNY;
-        weatherTimer = (float)GetRandomValue(10, 15);
+        weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
     }
 }
 
-float World::GetHeight(float x, float z) const{
-    float scale = 0.1f;
-    float amplitude = 3.5f;
+float World::GetHeight(float x, float z) const {
+    float amplitude = Config::World::PERLIN_AMPLITUDE;
+    float frequency = Config::World::PERLIN_SCALE;
+    float noiseVal = 0.0f;
+    float maxVal = 0.0f; 
 
-    float noiseVal = PerlinNoise::Noise2D(x * scale, z * scale);
-    return noiseVal * amplitude;
+    for (int i = 0; i < Config::World::OCTAVES; i++) {
+        noiseVal += PerlinNoise::Noise2D((x + offsetX) * frequency, (z + offsetZ) * frequency) * amplitude;
+        maxVal += amplitude;
+        amplitude *= Config::World::PERSISTENCE;
+        frequency *= Config::World::LACUNARITY;
+    }
 
+    noiseVal /= maxVal;
+
+    float normalizedNoise = (noiseVal + 1.0f) * 0.5f;
+    return pow(normalizedNoise, Config::World::PERLIN_EXPONENT) * Config::World::PERLIN_AMPLITUDE;
+}
+
+Color World::GetBiomeColor(float height) const {
+    if (height <= Config::World::WATER_LEVEL) {
+        return (Color){30, 144, 255, 255}; // вода
+    } else if (height <= Config::World::SAND_LEVEL) {
+        return (Color){238, 214, 175, 255}; // песок 
+    } else if (height < Config::World::BIOME_THRESHOLD) {
+        return (Color){34, 139, 34, 255};  // лес
+    } else {
+        return (Color){124, 252, 0, 255};  // луга
+    }
+}
+
+void World::GenerateTerrainMesh() {
+    float step = Config::World::MESH_DENSITY;
+    int cells = (int)(mapSize / step);
+    int vertexCount = cells * cells * 6; 
+
+    Mesh mesh = { 0 };
+    mesh.vertexCount = vertexCount;
+    mesh.triangleCount = cells * cells * 2;
+    
+    mesh.vertices = (float *)MemAlloc(mesh.vertexCount * 3 * sizeof(float));
+    mesh.colors = (unsigned char *)MemAlloc(mesh.vertexCount * 4 * sizeof(unsigned char));
+
+    int v = 0; 
+    int c = 0; 
+    float limit = mapSize / 2.0f;
+
+    for (float x = -limit; x < limit; x += step) {
+        for (float z = -limit; z < limit; z += step) {
+            float h1 = GetHeight(x, z);
+            float h2 = GetHeight(x + step, z);
+            float h3 = GetHeight(x + step, z + step);
+            float h4 = GetHeight(x, z + step);
+
+            Color c1 = GetBiomeColor(h1);
+            Color c2 = GetBiomeColor(h2);
+            Color c3 = GetBiomeColor(h3);
+            Color c4 = GetBiomeColor(h4);
+
+            float drawH1 = (h1 < Config::World::WATER_LEVEL) ? Config::World::WATER_LEVEL : h1;
+            float drawH2 = (h2 < Config::World::WATER_LEVEL) ? Config::World::WATER_LEVEL : h2;
+            float drawH3 = (h3 < Config::World::WATER_LEVEL) ? Config::World::WATER_LEVEL : h3;
+            float drawH4 = (h4 < Config::World::WATER_LEVEL) ? Config::World::WATER_LEVEL : h4;
+
+            mesh.vertices[v++] = x; mesh.vertices[v++] = drawH1; mesh.vertices[v++] = z;
+            mesh.colors[c++] = c1.r; mesh.colors[c++] = c1.g; mesh.colors[c++] = c1.b; mesh.colors[c++] = c1.a;
+            
+            mesh.vertices[v++] = x + step; mesh.vertices[v++] = drawH3; mesh.vertices[v++] = z + step;
+            mesh.colors[c++] = c3.r; mesh.colors[c++] = c3.g; mesh.colors[c++] = c3.b; mesh.colors[c++] = c3.a;
+            
+            mesh.vertices[v++] = x + step; mesh.vertices[v++] = drawH2; mesh.vertices[v++] = z;
+            mesh.colors[c++] = c2.r; mesh.colors[c++] = c2.g; mesh.colors[c++] = c2.b; mesh.colors[c++] = c2.a;
+
+
+            mesh.vertices[v++] = x; mesh.vertices[v++] = drawH1; mesh.vertices[v++] = z;
+            mesh.colors[c++] = c1.r; mesh.colors[c++] = c1.g; mesh.colors[c++] = c1.b; mesh.colors[c++] = c1.a;
+            
+            mesh.vertices[v++] = x; mesh.vertices[v++] = drawH4; mesh.vertices[v++] = z + step;
+            mesh.colors[c++] = c4.r; mesh.colors[c++] = c4.g; mesh.colors[c++] = c4.b; mesh.colors[c++] = c4.a;
+            
+            mesh.vertices[v++] = x + step; mesh.vertices[v++] = drawH3; mesh.vertices[v++] = z + step;
+            mesh.colors[c++] = c3.r; mesh.colors[c++] = c3.g; mesh.colors[c++] = c3.b; mesh.colors[c++] = c3.a;
+        }
+    }
+    
+    UploadMesh(&mesh, false);
+    terrainModel = LoadModelFromMesh(mesh);
 }
 
 void World::AddEntity(std::unique_ptr<Entity> entity){
@@ -45,22 +135,24 @@ void World::Update(float deltaTime){
         ChangeWeather();
     }
 
+    int halfMap = Config::World::MAP_SIZE / 2;
     if (currentWeather == WeatherState::RAINING){
         plantSpawnTimer -= deltaTime;
         if (plantSpawnTimer <= 0){
-            float rx = (float)GetRandomValue(-15, 15);
-            float rz = (float)GetRandomValue(-15, 15);
+            float rx = (float)GetRandomValue(-halfMap, halfMap);
+            float rz = (float)GetRandomValue(-halfMap, halfMap);
             float ry = GetHeight(rx, rz);
             AddEntity(std::make_unique<Plant>((Vector3){rx, ry, rz}));
 
-            plantSpawnTimer = PLANT_SPAWN_DELAY;
+            plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
         }
     }
+
+
 
     plantCount = 0;
     wolfCount = 0;
     sheepCount = 0;
-    
 
     for (auto& entity : entities){
         if (entity -> IsAlive()){
@@ -74,22 +166,7 @@ void World::Update(float deltaTime){
 }
 
 void World::Draw(){
-    for (int x = -mapSize/2; x < mapSize/2; ++x){
-        for (int z = -mapSize/2; z < mapSize/2; ++z){
-            Vector3 p1 = (Vector3){(float)x, GetHeight((float)x, (float)z), (float)z};
-            Vector3 p2 = (Vector3){(float)x+1.0f, GetHeight((float)x+1.0f, (float)z), (float)z};
-            Vector3 p3 = (Vector3){(float)x+1.0f, GetHeight((float)x+1.0f, (float)z+1.0f), (float)z+1.0f};
-            Vector3 p4 = (Vector3){(float)x, GetHeight((float)x, float(z)+1.0f), (float)z+1.0f};
-
-            Color terrainColor = ((x + z) % 2 == 0) ? (Color){34, 139, 34, 255} : (Color){46, 139, 87, 255};
-            DrawTriangle3D(p1, p3, p2, terrainColor);
-            DrawTriangle3D(p1, p4, p3, terrainColor);
-
-            DrawLine3D(p1, p2, (Color){0, 100, 0, 50});
-            DrawLine3D(p1, p4, (Color){0, 100, 0, 50});
-        }
-    }
-
+    DrawModel(terrainModel, Vector3(), 1.0f, WHITE);
 
     for (auto& entity : entities){
         if (entity->IsAlive()){
@@ -97,10 +174,11 @@ void World::Draw(){
         }
     }
 
+    int halfMap = Config::World::MAP_SIZE / 2;
     if (currentWeather == WeatherState::RAINING){
         for(int i = 0; i < 30; ++i){
-            float rx = (float)GetRandomValue(-15, 15);
-            float rz = (float)GetRandomValue(-15, 15);
+            float rx = (float)GetRandomValue(-halfMap, halfMap);
+            float rz = (float)GetRandomValue(-halfMap, halfMap);
             float surfaceY = GetHeight(rx, rz);
             float ry = (float)GetRandomValue(surfaceY, surfaceY+10.0f);
             Vector3 startPos = (Vector3){rx, ry, rz};
@@ -110,17 +188,4 @@ void World::Draw(){
         }
     }
 
-    std::string plantsStr = "Plants: " + std::to_string(plantCount);
-    std::string sheepStr = "Sheep: " + std::to_string(sheepCount);
-    std::string wolvesStr = "Wolves: " + std::to_string(wolfCount);
-    
-    std::string weatherStr = (currentWeather == WeatherState::SUNNY) ? "WEATHER: SUNNY" : "WEATHER: RAINING";
-    Color weatherColor = (currentWeather == WeatherState::SUNNY) ? ORANGE : BLUE;
-
-    DrawRectangle(10, 10, 220, 120, Fade(BLACK, 0.6f));
-    DrawText("ECOSYSTEM STATS:", 20, 20, 16, GREEN);
-    DrawText(weatherStr.c_str(), 20, 45, 14, weatherColor);
-    DrawText(plantsStr.c_str(), 20, 70, 14, WHITE);
-    DrawText(sheepStr.c_str(), 20, 85, 14, WHITE);
-    DrawText(wolvesStr.c_str(), 20, 100, 14, WHITE);
 }

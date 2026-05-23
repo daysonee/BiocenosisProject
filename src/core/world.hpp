@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include "entity.hpp"
+#include "constants.hpp"
 
 enum class WeatherState {
     SUNNY,
@@ -12,9 +13,9 @@ enum class WeatherState {
 class World{
 private:
     std::vector<std::unique_ptr<Entity>> entities;
+    Model terrainModel;
 
     float plantSpawnTimer;
-    const float PLANT_SPAWN_DELAY = 1.5f;
 
     WeatherState currentWeather;
     float weatherTimer;
@@ -24,15 +25,20 @@ private:
     int wolfCount;
 
     void ChangeWeather();
+    void GenerateTerrainMesh();
 
-    const int mapSize = 40;
+    const int mapSize = Config::World::MAP_SIZE;
+
+    float offsetX;
+    float offsetZ;
 
 public:
     World();
-    ~World() = default;
+    ~World();
 
     float GetHeight(float x, float z) const;
-
+    Color GetBiomeColor(float height) const;
+    
     void AddEntity(std::unique_ptr<Entity> entity);
 
     void Update(float deltaTime);
