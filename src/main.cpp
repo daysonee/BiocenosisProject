@@ -7,7 +7,7 @@
 #include <memory>
 
 int main(){
-    InitWindow(1920, 1080, "Simulator");
+    InitWindow(1280, 720, "Simulator");
 
     SetTargetFPS(60);
 

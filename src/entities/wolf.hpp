@@ -1,6 +1,8 @@
 #pragma once
 #include "animal.hpp"
 
+class Sheep;
+
 class Wolf : public Animal{
 private:
     Sheep* targetPrey;
