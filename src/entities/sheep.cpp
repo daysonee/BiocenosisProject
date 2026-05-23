@@ -122,6 +122,8 @@ void Sheep::Update(float deltaTime, World* world){
             stateTimer = Config::Sheep::IDLE_TIME;
         }    
     }
+
+    position.y = world->GetHeight(position.x, position.z);
 }
 
 void Sheep::Draw(){
