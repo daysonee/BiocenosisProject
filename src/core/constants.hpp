@@ -26,17 +26,23 @@ namespace Config {
         constexpr float WATER_LEVEL = 0.6f;         
         constexpr float SAND_LEVEL = 0.8f;       
         constexpr float BIOME_THRESHOLD = 2.5f;  // высота лесов до 2.5 потом луга
-
-        
     }
 
     namespace Sheep {
         constexpr int INITIAL_COUNT = 20;            // Общее целевое количество овец
-        constexpr float SPAWN_FLOCK_RADIUS = 6.0f;   // Радиус рассеивания овец внутри одного стада
-        constexpr float SAFE_ZONE_FROM_WOLVES = 25.0f;// Минимальное безопасное расстояние до волков при спавне
+
         
         constexpr float SPEED_WALK = 1.5f;
         constexpr float SPEED_RUN = 4.0f;
+
+        constexpr float BODY_RADIUS = 0.4f;          // Физический радиус овечки (если меньше, чем BODY_RADIUS * 2, то отталкиваются)
+        constexpr float SEVERE_STUCK_RADIUS = 0.6f;  // Радиус критической кучности (чуть меньше BODY_RADIUS * 2)
+
+        // Радиус безопасности: расстояние в единицах мира, ближе которого овца чует волка
+        constexpr float SAFE_ZONE_FROM_WOLVES = 12.0f;
+
+        // Радиус кучности при первоначальном спавне стада
+        constexpr float SPAWN_FLOCK_RADIUS = 5.0f;
 
         constexpr float VISION_RADIUS = 5.0f;
 

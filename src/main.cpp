@@ -17,7 +17,7 @@ void SpawnSheepSmartAndLogical(World& world) {
     // Параметры распределения стада
     int minFlockSize = 3;
     int maxFlockSize = 6;
-    int maxFlockAttempts = 300; // Быстрый лимит на поиск идеальных прибрежных зон
+    int maxFlockAttempts = 1000; // Быстрый лимит на поиск идеальных прибрежных зон
 
     // Этап 1: Умный спавн стадами у воды в безопасных зонах
     for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < totalSheepToSpawn; attempt++) {
