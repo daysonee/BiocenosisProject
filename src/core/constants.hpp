@@ -31,7 +31,9 @@ namespace Config {
     }
 
     namespace Sheep {
-        constexpr int INITIAL_COUNT = 15;
+        constexpr int INITIAL_COUNT = 20;            // Общее целевое количество овец
+        constexpr float SPAWN_FLOCK_RADIUS = 6.0f;   // Радиус рассеивания овец внутри одного стада
+        constexpr float SAFE_ZONE_FROM_WOLVES = 25.0f;// Минимальное безопасное расстояние до волков при спавне
         
         constexpr float SPEED_WALK = 1.5f;
         constexpr float SPEED_RUN = 4.0f;
