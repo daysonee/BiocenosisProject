@@ -65,7 +65,7 @@ void Sheep::Update(float deltaTime, World* world){
     if (state == AnimalState::HUNGRY){
         speed = myWalkSpeed;
         Plant* closestPlant = nullptr;
-        float closestDist = 99999.0f;
+        float closestDist = myVisionRadius; //замечает траву только в радиусе, иначе - гуляет
 
         for (const auto& entity : world->GetEntities()){
             if(!entity->IsAlive()){
