@@ -31,6 +31,8 @@ namespace Config {
     }
 
     namespace Sheep {
+        constexpr int INITIAL_COUNT = 15;
+        
         constexpr float SPEED_WALK = 1.5f;
         constexpr float SPEED_RUN = 4.0f;
 
