@@ -317,6 +317,47 @@ void World::Draw(){
         rlEnd();
     }
 
+    for (const auto& p : particles) {
+        if (p.isHeart) {
+            // Маленький красный кубик (или можно сделать крестик), символизирующий сердечко
+            DrawCube(p.position, 0.2f, 0.2f, 0.2f, RED);
+        } else {
+            // Серый прах смерти
+            DrawCube(p.position, 0.15f, 0.15f, 0.15f, p.color);
+        }
+    }
+}
 
+void World::SpawnParticles(Vector3 pos, Color color, int count, bool isHeart) {
+    for (int i = 0; i < count; i++) {
+        Particle p;
+        p.position = pos;
+        // Случайный разлет
+        p.velocity = {
+            (float)GetRandomValue(-20, 20) / 10.0f,
+            (float)GetRandomValue(10, 40) / 10.0f,
+            (float)GetRandomValue(-20, 20) / 10.0f
+        };
+        p.color = color;
+        p.lifetime = isHeart ? 2.0f : 1.0f; // сердечки живут чуть дольше
+        p.isHeart = isHeart;
+        particles.push_back(p);
+    }
+}
+
+// Вызови этот метод внутри World::Update
+void World::UpdateParticles(float deltaTime) {
+    for (auto it = particles.begin(); it != particles.end();) {
+        it->position.x += it->velocity.x * deltaTime;
+        it->position.y += it->velocity.y * deltaTime;
+        it->position.z += it->velocity.z * deltaTime;
+        it->lifetime -= deltaTime;
+        
+        if (it->lifetime <= 0.0f) {
+            it = particles.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 

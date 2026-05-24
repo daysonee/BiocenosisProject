@@ -1,6 +1,7 @@
 #pragma once
 
 #include "animal.hpp"
+#include "../core/constants.hpp"
 
 class Sheep : public Animal {
 private:
@@ -29,11 +30,30 @@ private:
     // Аварийный выход из кучи: толчок + новая цель
     void ForceEscape(World* world);
 
+    Config::Sheep::AgeStage ageStage;
+    float maxAgeInCurrentStage; // Сколько нужно прожить в текущей стадии
+    float ageTimer = 0.0f;
+
+    float matingCooldownTimer = 0.0f;
+    float matingProgressTimer = 0.0f;
+    Sheep* mateTarget = nullptr; // Ссылка на выбранного партнера
+
 public:
     bool isMating = false;
 
-    Sheep(Vector3 startPosition);
     ~Sheep() override = default;
+
+    Sheep(Vector3 startPosition, Config::Sheep::AgeStage startStage = Config::Sheep::AgeStage::BABY);
+    
+    Config::Sheep::AgeStage GetAgeStage() const { return ageStage; }
+    bool CanMate() const { 
+        return ageStage == Config::Sheep::AgeStage::ADULT && 
+               hunger >= Config::Sheep::MATING_HUNGER_THRESHOLD && 
+               matingCooldownTimer <= 0.0f && 
+               isAlive; 
+    }
+    
+    void SetMateTarget(Sheep* partner) { mateTarget = partner; }
 
     void Update(float deltaTime, World* world) override;
     void Draw() override;

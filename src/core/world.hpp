@@ -10,8 +10,17 @@ enum class WeatherState {
     RAINING
 };
 
+struct Particle {
+    Vector3 position;
+    Vector3 velocity;
+    Color color;
+    float lifetime;
+    bool isHeart; // true - сердечко, false - серый дым/кубик смерти
+};
+
 class World{
 private:
+    std::vector<Particle> particles;
     std::vector<std::unique_ptr<Entity>> entities;
     Model terrainModel;
 
@@ -61,6 +70,8 @@ public:
     float GetHeight(float x, float z) const;
     Color GetBiomeColor(float height) const;
     
+    void SpawnParticles(Vector3 pos, Color color, int count, bool isHeart);
+    void UpdateParticles(float deltaTime);
     void AddEntity(std::unique_ptr<Entity> entity);
 
     void Update(float deltaTime);

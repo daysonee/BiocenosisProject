@@ -5,6 +5,7 @@
 #include "entities/animal.hpp"
 #include "entities/sheep.hpp"
 #include "entities/wolf.hpp"
+#include "core/constants.hpp"
 #include <memory>
 #include <cmath>
  
@@ -119,10 +120,15 @@ int main(){
     camera.fovy = 45.0f;
     camera.projection = CAMERA_PERSPECTIVE;
 
+// --- НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ УПРАВЛЕНИЯ ВРЕМЕНЕМ ---
+    float timeScale = 1.0f;
+    Rectangle speedBtn = { 20, 20, 160, 40 }; // x, y, width, height
+
     while(!WindowShouldClose()){
 
         float dt = GetFrameTime();
 
+        // 1. Управление курсором и фулскрином
         if (IsKeyPressed(KEY_LEFT_ALT)) {
             if (IsCursorHidden()) EnableCursor();
             else DisableCursor();
@@ -132,15 +138,47 @@ int main(){
             ToggleFullscreen();
         }
 
+        // 2. Логика кнопки ускорения времени
+        Vector2 mousePos = GetMousePosition();
+        bool isBtnHovered = !IsCursorHidden() && CheckCollisionPointRec(mousePos, speedBtn);
+
+        // Переключаем скорость по клику левой кнопкой мыши
+        if (isBtnHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+            if (timeScale == 1.0f) timeScale = 5.0f;
+            else if (timeScale == 5.0f) timeScale = 10.0f;
+            else if (timeScale == 10.0f) timeScale = 20.0f; // Новое состояние
+            else timeScale = 1.0f;
+        }
+
         UpdateCamera(&camera, CAMERA_FREE);
 
-        myWorld.Update(dt);
+        // 3. УМНОЖАЕМ dt НА timeScale (магия ускорения здесь!)
+        myWorld.Update(dt * timeScale);
 
+        // 4. Отрисовка
         BeginDrawing();
         ClearBackground(SKYBLUE);
+        
+        // Рисуем 3D мир
         BeginMode3D(camera);
         myWorld.Draw();
         EndMode3D();
+
+        // --- 2D ИНТЕРФЕЙС (рисуется ПОВЕРХ 3D) ---
+        Color btnColor = isBtnHovered ? LIGHTGRAY : RAYWHITE;
+        
+        // Фон кнопки и рамка
+        DrawRectangleRec(speedBtn, btnColor);
+        DrawRectangleLinesEx(speedBtn, 2, BLACK);
+        
+        // Текст на кнопке (TextFormat позволяет вставить переменную прямо в строку)
+        DrawText(TextFormat("TIME: %.0fx", timeScale), speedBtn.x + 20, speedBtn.y + 10, 20, BLACK);
+        
+        // Подсказка, если курсор скрыт
+        if (IsCursorHidden()) {
+            DrawText("Press LEFT ALT to use UI", 20, 70, 20, DARKGRAY);
+        }
+
         EndDrawing();
     }
     EnableCursor();

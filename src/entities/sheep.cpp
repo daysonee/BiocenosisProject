@@ -11,31 +11,6 @@ static constexpr float FLOCK_WANDER_RADIUS = 14.0f;
 // Радиус, после которого овечка «вспоминает» о стаде и разворачивается
 static constexpr float FLOCK_MAX_DIST = 22.0f;
 
-Sheep::Sheep(Vector3 startPosition) : Animal(startPosition) {
-
-    float runMod           = (float)GetRandomValue(Config::Sheep::RUN_DECREASE,              Config::Sheep::RUN_INCREASE)              / 100.0f;
-    float walkMod          = (float)GetRandomValue(Config::Sheep::WALK_DECREASE,             Config::Sheep::WALK_INCREASE)             / 100.0f;
-    float maxHungerMod     = (float)GetRandomValue(Config::Sheep::MAX_HUNGER_DECREASE,       Config::Sheep::MAX_HUNGER_INCREASE)       / 100.0f;
-    float hungerThreshMod  = (float)GetRandomValue(Config::Sheep::HUNGER_THRESHOLD_DECREASE, Config::Sheep::HUNGER_THRESHOLD_INCREASE) / 100.0f;
-    float visionMod        = (float)GetRandomValue(Config::Sheep::VISION_DECREASE,           Config::Sheep::VISION_INCREASE)           / 100.0f;
-
-    myWalkSpeed       = Config::Sheep::SPEED_WALK        * walkMod;
-    myRunSpeed        = Config::Sheep::SPEED_RUN         * runMod;
-    myVisionRadius    = Config::Sheep::VISION_RADIUS     * visionMod;
-    myHungerThreshold = Config::Sheep::HUNGER_THRESHOLD  * hungerThreshMod;
-    myMaxHunger       = Config::Sheep::MAX_HUNGER        * maxHungerMod;
-
-    speed         = myWalkSpeed;
-    hunger        = myMaxHunger;
-    stateTimer    = (float)GetRandomValue(0, 30) * 0.1f; // Рассинхронизируем старт
-    targetHunter  = nullptr;
-    flockCenter   = startPosition;
-
-    // Начинаем в IDLE — первая цель выберется через stateTimer секунд
-    state          = AnimalState::IDLE;
-    targetPosition = startPosition;
-}
-
 // Выбирает случайную СУХУЮ точку вблизи flockCenter
 void Sheep::PickNewWanderTarget(World* world) {
     const int halfMap = Config::World::MAP_SIZE / 2;
@@ -99,7 +74,143 @@ void Sheep::ForceEscape(World* world) {
     stuckCount = 0;
 }
 
+// ЕДИНЫЙ КОНСТРУКТОР: Гены, статы и возраст
+Sheep::Sheep(Vector3 startPosition, Config::Sheep::AgeStage startStage) : Animal(startPosition) {
+    
+    // --- 1. Инициализация генов и базовых характеристик ---
+    float runMod           = (float)GetRandomValue(Config::Sheep::RUN_DECREASE,              Config::Sheep::RUN_INCREASE)              / 100.0f;
+    float walkMod          = (float)GetRandomValue(Config::Sheep::WALK_DECREASE,             Config::Sheep::WALK_INCREASE)             / 100.0f;
+    float maxHungerMod     = (float)GetRandomValue(Config::Sheep::MAX_HUNGER_DECREASE,       Config::Sheep::MAX_HUNGER_INCREASE)       / 100.0f;
+    float hungerThreshMod  = (float)GetRandomValue(Config::Sheep::HUNGER_THRESHOLD_DECREASE, Config::Sheep::HUNGER_THRESHOLD_INCREASE) / 100.0f;
+    float visionMod        = (float)GetRandomValue(Config::Sheep::VISION_DECREASE,           Config::Sheep::VISION_INCREASE)           / 100.0f;
+
+    myWalkSpeed       = Config::Sheep::SPEED_WALK        * walkMod;
+    myRunSpeed        = Config::Sheep::SPEED_RUN         * runMod;
+    myVisionRadius    = Config::Sheep::VISION_RADIUS     * visionMod;
+    myHungerThreshold = Config::Sheep::HUNGER_THRESHOLD  * hungerThreshMod;
+    myMaxHunger       = Config::Sheep::MAX_HUNGER        * maxHungerMod;
+
+    speed         = myWalkSpeed;
+    hunger        = myMaxHunger;
+    stateTimer    = (float)GetRandomValue(0, 30) * 0.1f; // Рассинхронизируем старт
+    targetHunter  = nullptr;
+    flockCenter   = startPosition;
+
+    // Начинаем в IDLE
+    state          = AnimalState::IDLE;
+    targetPosition = startPosition;
+
+    // --- 2. Инициализация возраста и системы размножения ---
+    ageStage = startStage;
+    ageTimer = 0.0f;
+    matingCooldownTimer = (float)GetRandomValue(30, 60); // небольшой откат после спавна
+
+    // Вычисляем лимиты времени для текущей стадии
+    if (ageStage == Config::Sheep::AgeStage::BABY) {
+        maxAgeInCurrentStage = (float)GetRandomValue(Config::Sheep::TIME_TO_GROW_BABY_MIN, Config::Sheep::TIME_TO_GROW_BABY_MAX);
+    } else if (ageStage == Config::Sheep::AgeStage::MEDIUM) {
+        maxAgeInCurrentStage = (float)GetRandomValue(Config::Sheep::TIME_TO_GROW_MEDIUM_MIN, Config::Sheep::TIME_TO_GROW_MEDIUM_MAX);
+    } else {
+        maxAgeInCurrentStage = Config::Sheep::TIME_ADULT_LIFESPAN;
+    }
+}
+
 void Sheep::Update(float deltaTime, World* world) {
+
+    // --- СИСТЕМА СТАРЕНИЯ ---
+    ageTimer += deltaTime;
+    if (matingCooldownTimer > 0.0f) matingCooldownTimer -= deltaTime;
+
+    if (ageTimer >= maxAgeInCurrentStage) {
+        ageTimer = 0.0f;
+        if (ageStage == Config::Sheep::AgeStage::BABY) {
+            ageStage = Config::Sheep::AgeStage::MEDIUM;
+            maxAgeInCurrentStage = (float)GetRandomValue(Config::Sheep::TIME_TO_GROW_MEDIUM_MIN, Config::Sheep::TIME_TO_GROW_MEDIUM_MAX);
+        } else if (ageStage == Config::Sheep::AgeStage::MEDIUM) {
+            ageStage = Config::Sheep::AgeStage::ADULT;
+            maxAgeInCurrentStage = Config::Sheep::TIME_ADULT_LIFESPAN;
+        } else if (ageStage == Config::Sheep::AgeStage::ADULT) {
+            // Естественная смерть от старости
+            world->SpawnParticles(position, (Color){180, 180, 180, 255}, 15, false); // Серые партиклы
+            Die();
+            return;
+        }
+    }
+
+    // --- СИСТЕМА СПАРИВАНИЯ (Только для взрослых и сытых) ---
+    if (CanMate() && state != AnimalState::FLEEING) {
+        // Если партнера нет, ищем ближайшую овцу, которая ТОЖЕ хочет спариваться
+        if (mateTarget == nullptr || !mateTarget->CanMate()) {
+            mateTarget = nullptr;
+            float closestDist = myVisionRadius;
+            
+            // Перебор сущностей в мире (для этого в world должен быть доступ к вектору или метод)
+            // Предположим, у тебя в world есть способ получить сущности:
+            for (auto& entity : world->GetEntities()) {
+                Sheep* potentialMate = dynamic_cast<Sheep*>(entity.get());
+                if (potentialMate && potentialMate != this && potentialMate->CanMate() && potentialMate->mateTarget == nullptr) {
+                    float d = Vector3Distance(position, potentialMate->GetPosition());
+                    if (d < closestDist) {
+                        closestDist = d;
+                        mateTarget = potentialMate;
+                    }
+                }
+            }
+            
+            if (mateTarget) {
+                mateTarget->SetMateTarget(this); // Договорились идти друг к другу
+            }
+        }
+
+        // Если нашли партнера — идем к нему
+        if (mateTarget) {
+            targetPosition = mateTarget->GetPosition();
+            float dist = Vector3Distance(position, targetPosition);
+            
+            if (dist <= Config::Sheep::MATING_APPROACH_DIST) {
+                // Подошли вплотную — запускаем таймер любви
+                isMating = true;
+                matingProgressTimer += deltaTime;
+                
+                // Каждые несколько кадров пускаем сердечки
+                if (GetRandomValue(0, 10) < 2) {
+                    world->SpawnParticles(position, RED, 1, true);
+                }
+                
+                // Рождение ребенка (делает только один из партнеров, чтобы не спавнить двух)
+                if (matingProgressTimer >= Config::Sheep::MATING_PROCESS_TIME && this > mateTarget) {
+                    // Спавним маленькую овечку (по умолчанию стадия BABY)
+                    auto baby = std::make_unique<Sheep>(position, Config::Sheep::AgeStage::BABY);
+                    baby->SetFlockCenter(flockCenter); // Передаем домашнее стадо
+                    world->AddEntity(std::move(baby));
+                    
+                    // Сбрасываем таймеры обоим
+                    hunger -= 40.0f; // Тратят энергию
+                    matingCooldownTimer = Config::Sheep::MATING_COOLDOWN;
+                    isMating = false;
+                    matingProgressTimer = 0.0f;
+                    
+                    mateTarget->hunger -= 40.0f;
+                    mateTarget->matingCooldownTimer = Config::Sheep::MATING_COOLDOWN;
+                    mateTarget->isMating = false;
+                    mateTarget->matingProgressTimer = 0.0f;
+                    
+                    mateTarget->SetMateTarget(nullptr);
+                    mateTarget = nullptr;
+                }
+                return; // Замораживаем обычное блуждание, пока спариваемся
+            } else {
+                isMating = false;
+                matingProgressTimer = 0.0f;
+                MoveTowardsTarget(deltaTime, world); // Идем на сближение
+                return;
+            }
+        }
+    } else {
+        isMating = false;
+        matingProgressTimer = 0.0f;
+        mateTarget = nullptr;
+    }
 
     if (!IsAlive()) return;
 
@@ -354,7 +465,28 @@ void Sheep::Update(float deltaTime, World* world) {
 }
 
 void Sheep::Draw() {
-    DrawCube(position, 1.2f, 1.2f, 1.2f, WHITE);
-    Vector3 headPos = { position.x + 0.6f, position.y + 0.2f, position.z };
-    DrawCube(headPos, 0.4f, 0.4f, 0.4f, BLACK);
+    float scale = 1.0f;
+    Color bodyColor = WHITE;
+
+    switch (ageStage) {
+        case Config::Sheep::AgeStage::BABY:
+            scale = 0.4f;   // Крошечная
+            bodyColor = WHITE;
+            break;
+        case Config::Sheep::AgeStage::MEDIUM:
+            scale = 0.75f;  // Подросток
+            bodyColor = WHITE;
+            break;
+        case Config::Sheep::AgeStage::ADULT:
+            scale = 1.2f;   // Взрослая (твоя базовая величина)
+            bodyColor = (Color){ 225, 225, 225, 255 }; // Серо-белый оттенок шерсти старости
+            break;
+    }
+
+    // Отрисовка тела с учетом масштаба
+    DrawCube(position, 1.2f * scale, 1.2f * scale, 1.2f * scale, bodyColor);
+    
+    // Отрисовка головы
+    Vector3 headPos = { position.x + (0.6f * scale), position.y + (0.2f * scale), position.z };
+    DrawCube(headPos, 0.4f * scale, 0.4f * scale, 0.4f * scale, BLACK);
 }

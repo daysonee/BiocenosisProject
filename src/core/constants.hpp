@@ -1,13 +1,12 @@
 #pragma once
 
 namespace Config {
-
     namespace World {
         constexpr int   RAINDROPS_COUNT = 10000;
 
         // ОТРИСОВКА
         constexpr int   MAP_SIZE        = 1000;
-        constexpr float MESH_DENSITY    = 0.25f;     
+        constexpr float MESH_DENSITY    = 1;     
         constexpr float PLANT_SPAWN_DELAY   = 1.5f;
         constexpr float WEATHER_SUNNY_MIN   = 10.0f;
         constexpr float WEATHER_SUNNY_MAX   = 15.0f;
@@ -34,6 +33,27 @@ namespace Config {
     namespace Sheep {
         // Вдвое больше овец, с запасом для прибрежного спавна
         constexpr int   INITIAL_COUNT    = 100;
+
+        // Добавить внутрь namespace Config::Sheep
+        enum class AgeStage {
+            BABY,
+            MEDIUM,
+            ADULT
+        };
+
+        // Настройки возраста (в секундах)
+        constexpr float TIME_TO_GROW_BABY_MIN   = 180.0f; // 3 минуты
+        constexpr float TIME_TO_GROW_BABY_MAX   = 240.0f; // 4 минуты
+        constexpr float TIME_TO_GROW_MEDIUM_MIN = 360.0f; // 6 минут
+        constexpr float TIME_TO_GROW_MEDIUM_MAX = 420.0f; // 7 минут
+        constexpr float TIME_ADULT_LIFESPAN     = 720.0f; // 12 минут
+
+        // Настройки спаривания
+        constexpr float MATING_HUNGER_THRESHOLD = 80.0f;  // Овца хочет спариваться только если сыта > 80
+        constexpr float MATING_COOLDOWN         = 60.0f;  // Откат после родов (1 минута)
+        constexpr float MATING_APPROACH_DIST    = 1.0f;   // Дистанция для начала процесса
+        constexpr float MATING_PROCESS_TIME     = 3.0f;   // Сколько секунд нужно стоять рядом
+
 
         constexpr float SPEED_WALK       = 1.5f;
         constexpr float SPEED_RUN        = 4.0f;
