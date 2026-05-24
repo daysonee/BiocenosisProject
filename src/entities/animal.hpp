@@ -4,14 +4,14 @@
 
 class World;
 
-enum class AnimalState{
+enum class AnimalState {
     IDLE,
     WANDERING,
     HUNGRY,
     FLEEING
 };
 
-class Animal : public Entity{
+class Animal : public Entity {
 protected:
     float health;
     float speed;
@@ -23,5 +23,7 @@ public:
     Animal(Vector3 startPosition);
     virtual ~Animal() override = default;
 
-    void MoveTowardsTarget(float deltaTime, World* world);
+    // Возвращает true если движение удалось, false если полностью заблокировано водой.
+    // Реализует Minecraft-скольжение: при блокировке пробует двигаться вдоль одной из осей.
+    bool MoveTowardsTarget(float deltaTime, World* world);
 };
