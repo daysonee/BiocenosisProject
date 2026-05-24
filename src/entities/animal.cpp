@@ -70,6 +70,11 @@ bool Animal::MoveTowardsTarget(float deltaTime, World* world) {
         }
     }
 
+    if (moved && world != nullptr) {
+        // Выталкиваем животное из стволов (0.4f - радиус тела из констант овцы)
+        position = world->ResolveTreeCollisions(position, 0.4f);
+    }
+
     // Корректируем высоту по рельефу в любом случае
     if (world) position.y = world->GetHeight(position.x, position.z);
 

@@ -3,6 +3,8 @@
 namespace Config {
 
     namespace World {
+        constexpr int   RAINDROPS_COUNT = 10000;
+
         // ОТРИСОВКА
         constexpr int   MAP_SIZE        = 1000;
         constexpr float MESH_DENSITY    = 0.25f;     
@@ -25,11 +27,13 @@ namespace Config {
         constexpr float WATER_LEVEL      = 20.0f;   
         constexpr float SAND_LEVEL       = 23.0f;   
         constexpr float BIOME_THRESHOLD  = 35.0f;  
+        constexpr int   TREE_COUNT       = 5000;
+        constexpr int   BUSH_COUNT      = 1000;
     }
 
     namespace Sheep {
         // Вдвое больше овец, с запасом для прибрежного спавна
-        constexpr int   INITIAL_COUNT    = 40;
+        constexpr int   INITIAL_COUNT    = 100;
 
         constexpr float SPEED_WALK       = 1.5f;
         constexpr float SPEED_RUN        = 4.0f;

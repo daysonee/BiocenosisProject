@@ -15,10 +15,30 @@ private:
     std::vector<std::unique_ptr<Entity>> entities;
     Model terrainModel;
 
+    std::vector<Vector3> treePositions; 
+    std::vector<Vector3> grassPositions;
+
+    Mesh trunkMesh;
+    Mesh leafBottomMesh;
+    Mesh leafMidMesh;
+    Mesh leafTopMesh;
+    Mesh bushMesh;
+
+    Material trunkMat;
+    Material leafMat;
+    Material bushMat;
+
+    std::vector<Matrix> trunkTransforms;
+    std::vector<Matrix> leafBottomTransforms;
+    std::vector<Matrix> leafMidTransforms;
+    std::vector<Matrix> leafTopTransforms;
+    std::vector<Matrix> bushTransforms;
+
     float plantSpawnTimer;
 
     WeatherState currentWeather;
     float weatherTimer;
+    std::vector<Vector3> rainDrops;
 
     int plantCount;
     int sheepCount;
@@ -36,6 +56,8 @@ public:
     World();
     ~World();
 
+    Vector3 ResolveTreeCollisions(Vector3 animalPos, float animalRadius) const;
+    
     float GetHeight(float x, float z) const;
     Color GetBiomeColor(float height) const;
     

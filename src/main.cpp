@@ -107,9 +107,6 @@ int main(){
 
     World myWorld;
 
-    myWorld.AddEntity(std::make_unique<Plant>((Vector3){0.0f, 0.0f, 0.0f }));
-    myWorld.AddEntity(std::make_unique<Plant>((Vector3){5.0f, 0.0f, -3.0f }));
-    myWorld.AddEntity(std::make_unique<Plant>((Vector3){-4.0f, 0.0f, 2.0f }));
     myWorld.AddEntity(std::make_unique<Wolf>((Vector3){ 10.0f, 0.0f, 10.0f }));
 
     // продвинутый спавн овец
@@ -142,7 +139,6 @@ int main(){
         BeginDrawing();
         ClearBackground(SKYBLUE);
         BeginMode3D(camera);
-        DrawGrid(20, 1.0f);
         myWorld.Draw();
         EndMode3D();
         EndDrawing();

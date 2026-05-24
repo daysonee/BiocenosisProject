@@ -4,8 +4,9 @@
 #include "../entities/sheep.hpp"
 #include "../entities/plant.hpp"
 #include "../utils/noise.hpp"
-#include <string>
+#include <vector>
 #include <rlgl.h>
+#include "raymath.h"
 
 World::World(){
 
@@ -20,10 +21,85 @@ World::World(){
 
     currentWeather = WeatherState::SUNNY;
     weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
+
+    trunkMesh = GenMeshCylinder(0.15f, 0.8f, 5);
+    leafBottomMesh = GenMeshCone(1.2f, 1.2f, 5);
+    leafMidMesh = GenMeshCone(0.9f, 1.0f, 5);
+    leafTopMesh = GenMeshCone(0.6f, 0.8f, 5);
+    bushMesh = GenMeshSphere(0.8f, 6, 6); 
+
+    trunkMat = LoadMaterialDefault(); trunkMat.maps[MATERIAL_MAP_DIFFUSE].color = BROWN;
+    leafMat = LoadMaterialDefault();  leafMat.maps[MATERIAL_MAP_DIFFUSE].color = DARKGREEN;
+    bushMat = LoadMaterialDefault(); bushMat.maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+
+
+    int halfMap = Config::World::MAP_SIZE / 2;
+    int maxTrees = Config::World::TREE_COUNT;
+    int attempts = 0;
+    float minTreeDist = 2.0f; 
+
+    while (treePositions.size() < maxTrees && attempts < maxTrees * 3) {
+        attempts++;
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = GetHeight(rx, rz);
+        
+        if (ry > Config::World::SAND_LEVEL && ry <= Config::World::BIOME_THRESHOLD) {
+            bool overlap = false;
+            for (const auto& pos : treePositions) {
+                float dx = rx - pos.x;
+                float dz = rz - pos.z;
+                if (dx * dx + dz * dz < minTreeDist * minTreeDist) {
+                    overlap = true;
+                    break;
+                }
+            }
+            if (!overlap) {
+                treePositions.push_back({rx, ry, rz}); 
+
+                trunkTransforms.push_back(MatrixTranslate(rx, ry + 0.4f, rz));
+                leafBottomTransforms.push_back(MatrixTranslate(rx, ry + 0.6f + 0.6f, rz));
+                leafMidTransforms.push_back(MatrixTranslate(rx, ry + 1.4f + 0.5f, rz));
+                leafTopTransforms.push_back(MatrixTranslate(rx, ry + 2.1f + 0.4f, rz));
+            }
+        }
+    }
+
+
+    for (int i = 0; i < Config::World::BUSH_COUNT; i++) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = GetHeight(rx, rz);
+        
+        if (ry > Config::World::BIOME_THRESHOLD && ry <= 65.0f) {
+            bushTransforms.push_back(MatrixTranslate(rx, ry + 0.2f, rz));
+        }
+    }
+
+    int maxRainDrops = Config::World::RAINDROPS_COUNT; 
+    for (int i = 0; i < maxRainDrops; i++) {
+        rainDrops.push_back({
+            (float)GetRandomValue(-halfMap, halfMap),
+            (float)GetRandomValue(20, 100), 
+            (float)GetRandomValue(-halfMap, halfMap)
+        });
+    }
+    
+
 }
 
 World::~World(){
     UnloadModel(terrainModel);
+
+    UnloadMesh(trunkMesh);
+    UnloadMesh(leafBottomMesh);
+    UnloadMesh(leafMidMesh);
+    UnloadMesh(leafTopMesh);
+    UnloadMesh(bushMesh);
+
+    UnloadMaterial(trunkMat);
+    UnloadMaterial(leafMat);
+    UnloadMaterial(bushMat);
 }
 
 void World::ChangeWeather(){
@@ -56,31 +132,22 @@ float World::GetHeight(float x, float z) const {
 }
 
 Color World::GetBiomeColor(float height) const {
-    // Вода и дно океана
     if (height <= Config::World::WATER_LEVEL) {
-        // Чем глубже дно, тем темнее песок/грязь под водой
         float depthFactor = height / Config::World::WATER_LEVEL;
-        if (depthFactor < 0.5f) return (Color){20, 50, 80, 255}; // Глубокое океаническое дно
-        return (Color){140, 120, 90, 255};                      // Мелководное дно
+        if (depthFactor < 0.5f) return (Color){20, 50, 80, 255};
+        return (Color){140, 120, 90, 255};                      
     }
-    
-    // Пляж
     if (height <= Config::World::SAND_LEVEL) {
-        return (Color){230, 215, 160, 255}; // Приятный желтый песок
+        return (Color){230, 215, 160, 255}; 
     }
-    
-    // Равнинные леса и тайга
     if (height <= Config::World::BIOME_THRESHOLD) {
-        return (Color){45, 110, 60, 255}; // Густой зеленый цвет леса
+        return (Color){45, 110, 60, 255}; 
     }
-    
-    // Горные луга
     if (height <= 65.0f) {
-        return (Color){110, 160, 80, 255}; // Светло-зеленый цвет высокогорных лугов
+        return (Color){110, 160, 80, 255}; 
     }
     
-    // Каменистые вершины горы
-    return (Color){130, 130, 130, 255}; // Серые скалы для самых высоких пиков
+    return (Color){130, 130, 130, 255}; 
 }
 
 void World::GenerateTerrainMesh() {
@@ -103,19 +170,16 @@ void World::GenerateTerrainMesh() {
     for (float x = -limit; x < limit; x += step) {
         for (float z = -limit; z < limit; z += step) {
             
-            // ВАЖНО: Получаем ЧЕСТНУЮ высоту шума без всяких обрезаний и зажатий!
             float h1 = GetHeight(x, z);
             float h2 = GetHeight(x + step, z);
             float h3 = GetHeight(x + step, z + step);
             float h4 = GetHeight(x, z + step);
 
-            // Получаем цвета биомов на основе честной высоты
             Color c1 = GetBiomeColor(h1);
             Color c2 = GetBiomeColor(h2);
             Color c3 = GetBiomeColor(h3);
             Color c4 = GetBiomeColor(h4);
 
-            // Треугольник 1
             mesh.vertices[v++] = x;        mesh.vertices[v++] = h1; mesh.vertices[v++] = z;
             mesh.colors[c++] = c1.r; mesh.colors[c++] = c1.g; mesh.colors[c++] = c1.b; mesh.colors[c++] = c1.a;
 
@@ -125,7 +189,6 @@ void World::GenerateTerrainMesh() {
             mesh.vertices[v++] = x + step; mesh.vertices[v++] = h2; mesh.vertices[v++] = z;
             mesh.colors[c++] = c2.r; mesh.colors[c++] = c2.g; mesh.colors[c++] = c2.b; mesh.colors[c++] = c2.a;
 
-            // Треугольник 2
             mesh.vertices[v++] = x;        mesh.vertices[v++] = h1; mesh.vertices[v++] = z;
             mesh.colors[c++] = c1.r; mesh.colors[c++] = c1.g; mesh.colors[c++] = c1.b; mesh.colors[c++] = c1.a;
 
@@ -145,6 +208,30 @@ void World::AddEntity(std::unique_ptr<Entity> entity){
     entities.push_back(std::move(entity));
 }
 
+Vector3 World::ResolveTreeCollisions(Vector3 animalPos, float animalRadius) const {
+    Vector3 correctedPos = animalPos;
+    float treeRadius = 0.25f; 
+    float minDist = animalRadius + treeRadius;
+    float minDistSq = minDist * minDist;
+
+    for (const auto& treePos : treePositions) {
+        float dx = correctedPos.x - treePos.x;
+        float dz = correctedPos.z - treePos.z;
+        float distSq = dx * dx + dz * dz;
+
+        if (distSq < minDistSq) {
+            float distance = sqrtf(distSq);
+            if (distance == 0.0f) {
+                correctedPos.x += 0.1f;
+            } else {
+                correctedPos.x = treePos.x + (dx / distance) * minDist;
+                correctedPos.z = treePos.z + (dz / distance) * minDist;
+            }
+        }
+    }
+    return correctedPos;
+}
+
 void World::Update(float deltaTime){
     weatherTimer -= deltaTime;
     if (weatherTimer <= 0.0f){
@@ -153,18 +240,30 @@ void World::Update(float deltaTime){
 
     int halfMap = Config::World::MAP_SIZE / 2;
     if (currentWeather == WeatherState::RAINING){
+       float rainSpeed = 60.0f * deltaTime;
+        for (auto& drop : rainDrops) {
+            drop.y -= rainSpeed;
+            drop.x -= rainSpeed * 0.1f;
+            
+            if (drop.y < -10.0f) {
+                drop.y = (float)GetRandomValue(40, 100);
+                drop.x = (float)GetRandomValue(-halfMap, halfMap);
+                drop.z = (float)GetRandomValue(-halfMap, halfMap);
+            }
+        }
+
         plantSpawnTimer -= deltaTime;
         if (plantSpawnTimer <= 0){
             float rx = (float)GetRandomValue(-halfMap, halfMap);
             float rz = (float)GetRandomValue(-halfMap, halfMap);
             float ry = GetHeight(rx, rz);
-            AddEntity(std::make_unique<Plant>((Vector3){rx, ry, rz}));
-
-            plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
+            
+            if (ry > Config::World::SAND_LEVEL) {
+                AddEntity(std::make_unique<Plant>((Vector3){rx, ry, rz}));
+                plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
+            }
         }
     }
-
-
 
     plantCount = 0;
     wolfCount = 0;
@@ -182,34 +281,42 @@ void World::Update(float deltaTime){
 }
 
 void World::Draw(){
-DrawModel(terrainModel, Vector3(), 1.0f, WHITE);
+    DrawModel(terrainModel, Vector3(), 1.0f, WHITE);
 
-    // ОТРИСОВКА ВОДНОЙ ГЛАДИ поверх низин
-    // Используем DrawCube, чтобы создать красивый плоский океан по всей карте
     DrawCubeV(
         (Vector3){ 0.0f, Config::World::WATER_LEVEL / 2.0f, 0.0f }, 
         (Vector3){ (float)mapSize, Config::World::WATER_LEVEL, (float)mapSize }, 
-        (Color){ 30, 120, 190, 255 } // Синий океан. Пока без прозрачности, чтобы не нагружать код
+        (Color){ 30, 120, 190, 255 } 
     );
 
-    // Отрисовка сущностей (остается без изменений)
+    for (const auto& mat : bushTransforms) {
+        DrawMesh(bushMesh, bushMat, mat);
+    }
+
+    for (size_t i = 0; i < trunkTransforms.size(); i++) {
+        DrawMesh(trunkMesh, trunkMat, trunkTransforms[i]);
+        DrawMesh(leafBottomMesh, leafMat, leafBottomTransforms[i]);
+        DrawMesh(leafMidMesh, leafMat, leafMidTransforms[i]);
+        DrawMesh(leafTopMesh, leafMat, leafTopTransforms[i]);
+    }
+  
     for (auto& entity : entities){
         if (entity->IsAlive()){
             entity->Draw(); 
         }
     }
+
     int halfMap = Config::World::MAP_SIZE / 2;
     if (currentWeather == WeatherState::RAINING){
-        for(int i = 0; i < 30; ++i){
-            float rx = (float)GetRandomValue(-halfMap, halfMap);
-            float rz = (float)GetRandomValue(-halfMap, halfMap);
-            float surfaceY = GetHeight(rx, rz);
-            float ry = (float)GetRandomValue(surfaceY, surfaceY+10.0f);
-            Vector3 startPos = (Vector3){rx, ry, rz};
-            Vector3 endPos = (Vector3){rx, ry-0.8f, rz};
-
-            DrawLine3D(startPos, endPos, BLUE);
+       rlBegin(RL_LINES);
+        rlColor4ub(140, 170, 250, 120); 
+        for (const auto& drop : rainDrops) {
+            rlVertex3f(drop.x, drop.y, drop.z);
+            rlVertex3f(drop.x + 0.3f, drop.y + 3.0f, drop.z);
         }
+        rlEnd();
     }
 
+
 }
+
