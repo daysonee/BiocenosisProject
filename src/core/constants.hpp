@@ -4,9 +4,8 @@ namespace Config {
 
     namespace World {
         // ОТРИСОВКА
-        constexpr int   MAP_SIZE        = 200;
-        constexpr float MESH_DENSITY    = 0.5f;
-
+        constexpr int   MAP_SIZE        = 1000;
+        constexpr float MESH_DENSITY    = 0.25f;     
         constexpr float PLANT_SPAWN_DELAY   = 1.5f;
         constexpr float WEATHER_SUNNY_MIN   = 10.0f;
         constexpr float WEATHER_SUNNY_MAX   = 15.0f;
@@ -14,18 +13,18 @@ namespace Config {
         constexpr float WEATHER_RAIN_MAX    = 15.0f;
 
         // ФРАКТАЛЬНЫЙ ШУМ
-        constexpr float PERLIN_SCALE     = 0.04f;   // ширина биомов
-        constexpr float PERLIN_AMPLITUDE = 6.0f;    // макс высота гор
-        constexpr float PERLIN_EXPONENT  = 1.5f;    // выравнивание долин
+        constexpr float PERLIN_SCALE     = 0.0025f; 
+        constexpr float PERLIN_AMPLITUDE = 80.0f;   
+        constexpr float PERLIN_EXPONENT  = 1.3f;    
 
-        constexpr int   OCTAVES          = 4;        // кол-во слоёв
-        constexpr float PERSISTENCE      = 0.5f;     // 0.0 – 1.0
-        constexpr float LACUNARITY       = 2.0f;     // уменьшение слоёв
+        constexpr int   OCTAVES          = 4;        
+        constexpr float PERSISTENCE      = 0.45f;     
+        constexpr float LACUNARITY       = 2.0f;     
 
-        // БИОМЫ
-        constexpr float WATER_LEVEL      = 0.6f;
-        constexpr float SAND_LEVEL       = 0.8f;
-        constexpr float BIOME_THRESHOLD  = 2.5f;    // выше — луга, ниже — лес
+        // БИОМЫ 
+        constexpr float WATER_LEVEL      = 20.0f;   
+        constexpr float SAND_LEVEL       = 23.0f;   
+        constexpr float BIOME_THRESHOLD  = 35.0f;  
     }
 
     namespace Sheep {
