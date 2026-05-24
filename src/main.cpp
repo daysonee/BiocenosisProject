@@ -7,91 +7,88 @@
 #include "entities/wolf.hpp"
 #include <memory>
 #include <cmath>
-
-// СПАВН ОВЕЦ
+ 
+// СПАВН ОВЕЦ СТАДАМИ
 void SpawnSheepSmartAndLogical(World& world) {
-    int halfMap = Config::World::MAP_SIZE / 2;
-    int totalSheepToSpawn = Config::Sheep::INITIAL_COUNT;
-    int spawnedCount = 0;
-
-    // Параметры распределения стада
-    int minFlockSize = 3;
-    int maxFlockSize = 6;
-    int maxFlockAttempts = 1000; // Быстрый лимит на поиск идеальных прибрежных зон
-
-    // Этап 1: Умный спавн стадами у воды в безопасных зонах
-    for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < totalSheepToSpawn; attempt++) {
-        
-        // 1. Ищем потенциальный центр для нового стада
+    const int halfMap           = Config::World::MAP_SIZE / 2;
+    const int totalSheepToSpawn = Config::Sheep::INITIAL_COUNT;
+    int spawnedCount            = 0;
+ 
+    const int   minFlockSize     = 3;
+    const int   maxFlockSize     = 6;
+    const int   maxFlockAttempts = 1000;
+ 
+    // --- Этап 1: спавн стадами на прибрежных зонах вдали от волков ---
+    for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < totalSheepToSpawn; ++attempt) {
+ 
+        // Выбираем потенциальный центр стада
         float cx = (float)GetRandomValue(-halfMap, halfMap);
         float cz = (float)GetRandomValue(-halfMap, halfMap);
         float cy = world.GetHeight(cx, cz);
-
-        // Проверяем биом (подходит ли высота под прибрежную зону)
+ 
+        // Только прибрежные зоны (песок / низкие луга)
         if (cy <= Config::World::WATER_LEVEL || cy > Config::World::SAND_LEVEL + 0.3f) {
-            continue; 
+            continue;
         }
-
-        // 2. Умная проверка: Безопасность стада. Нет ли рядом волков?
+ 
+        // Нет ли рядом волков?
         bool isZoneSafe = true;
         for (const auto& entity : world.GetEntities()) {
-            // Динамически проверяем, является ли сущность волком
             if (dynamic_cast<Wolf*>(entity.get())) {
-                float dist = Vector3Distance((Vector3){cx, cy, cz}, entity->GetPosition());
-                if (dist < Config::Sheep::SAFE_ZONE_FROM_WOLVES) {
+                if (Vector3Distance({ cx, cy, cz }, entity->GetPosition()) < Config::Sheep::SAFE_ZONE_FROM_WOLVES) {
                     isZoneSafe = false;
-                    break; // Зона опасна, выходим из проверки сущностей
+                    break;
                 }
             }
         }
-
-        if (!isZoneSafe) continue; // Нашли берег, но там караулит волк — ищем другое место!
-
-        // 3. Зона идеальна! Формируем размер этого конкретного семейства
-        int currentFlockSize = GetRandomValue(minFlockSize, maxFlockSize);
-
-        for (int i = 0; i < currentFlockSize; i++) {
+        if (!isZoneSafe) continue;
+ 
+        // Формируем стадо вокруг найденного центра
+        const int currentFlockSize = GetRandomValue(minFlockSize, maxFlockSize);
+        const Vector3 flockCenter  = { cx, cy, cz };
+ 
+        for (int i = 0; i < currentFlockSize; ++i) {
             if (spawnedCount >= totalSheepToSpawn) break;
-
-            // Используем полярные координаты для органического кругового распределения
-            float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
-            // Случайный радиус от 1.0 до SPAWN_FLOCK_RADIUS
+ 
+            // Полярные координаты — органичное круговое распределение
+            float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
             float radius = (float)GetRandomValue(10, (int)(Config::Sheep::SPAWN_FLOCK_RADIUS * 10)) / 10.0f;
-
+ 
             float sx = cx + cosf(angle) * radius;
             float sz = cz + sinf(angle) * radius;
-
-            // Защита от выхода за границы карты
+ 
             if (sx < -halfMap || sx > halfMap || sz < -halfMap || sz > halfMap) continue;
-
+ 
             float sy = world.GetHeight(sx, sz);
-
-            // Финальная проверка: конкретная овечка из стада не должна провалиться под воду
-            if (sy > Config::World::WATER_LEVEL) {
-                world.AddEntity(std::make_unique<Sheep>((Vector3){ sx, sy, sz }));
-                spawnedCount++;
-            }
+            if (sy <= Config::World::WATER_LEVEL) continue;
+ 
+            // Создаём овечку и сразу назначаем ей центр стада
+            auto sheep = std::make_unique<Sheep>((Vector3){ sx, sy, sz });
+            sheep->SetFlockCenter(flockCenter);
+            world.AddEntity(std::move(sheep));
+            ++spawnedCount;
         }
     }
-
-    // Этап 2: Скоростной Фолбэк (Гарантия производительности)
-    // Если из-за генерации карты идеальных пляжей не хватило, мгновенно доспавниваем 
-    // остаток на любых сухих участках (например, лугах), чтобы игра не зависла.
+ 
+    // --- Этап 2: фолбэк — доспавниваем оставшихся на любой суше ---
     if (spawnedCount < totalSheepToSpawn) {
         int fallbackAttempts = 1000;
-        while (spawnedCount < totalSheepToSpawn && fallbackAttempts > 0) {
-            fallbackAttempts--;
+        while (spawnedCount < totalSheepToSpawn && fallbackAttempts-- > 0) {
             float rx = (float)GetRandomValue(-halfMap, halfMap);
             float rz = (float)GetRandomValue(-halfMap, halfMap);
             float ry = world.GetHeight(rx, rz);
-
+ 
             if (ry > Config::World::WATER_LEVEL) {
-                world.AddEntity(std::make_unique<Sheep>((Vector3){ rx, ry, rz }));
-                spawnedCount++;
+                auto sheep = std::make_unique<Sheep>((Vector3){ rx, ry, rz });
+                // Для фолбэк-овец центр стада = точка спавна (одиночки)
+                sheep->SetFlockCenter({ rx, ry, rz });
+                world.AddEntity(std::move(sheep));
+                ++spawnedCount;
             }
         }
     }
 }
+ 
 
 int main(){
 

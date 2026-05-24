@@ -1,29 +1,77 @@
 #include "animal.hpp"
 #include "raymath.h"
 #include "../core/world.hpp"
+#include "../core/constants.hpp"
 
-Animal::Animal(Vector3 startPosition) : Entity(startPosition){
-    health = 100.0f;
-    hunger = 100.0f;
-    speed = 2.0f;
-    state = AnimalState::IDLE;
+Animal::Animal(Vector3 startPosition) : Entity(startPosition) {
+    health         = 100.0f;
+    hunger         = 100.0f;
+    speed          = 2.0f;
+    state          = AnimalState::IDLE;
     targetPosition = startPosition;
 }
 
-void Animal::MoveTowardsTarget(float deltaTime, World* world){
+// Пробует переместить животное к цели с обходом воды в стиле Minecraft.
+// Алгоритм:
+//   1. Пробуем полный шаг (dx, dz).
+//   2. Если в воде — пробуем только X-составляющую (скольжение вдоль берега по Z).
+//   3. Если тоже вода — пробуем только Z-составляющую (скольжение вдоль берега по X).
+//   4. Если оба варианта в воде — возвращаем false (животное заблокировано).
+// Всегда корректируем Y по рельефу.
+bool Animal::MoveTowardsTarget(float deltaTime, World* world) {
 
-    Vector3 targetFlat = {targetPosition.x, position.y, targetPosition.z}; 
-    Vector3 direction = Vector3Subtract(targetFlat, position);
+    // Игнорируем разницу по Y при выборе направления — двигаемся строго в горизонтали
+    Vector3 direction = {
+        targetPosition.x - position.x,
+        0.0f,
+        targetPosition.z - position.z
+    };
 
     float distance = Vector3Length(direction);
+    if (distance <= 0.1f) {
+        // Уже у цели
+        if (world) position.y = world->GetHeight(position.x, position.z);
+        return true;
+    }
 
-    if(distance > 0.1f){
-        Vector3 normilizedDir = Vector3Normalize(direction);
-        Vector3 velocity = Vector3Scale(normilizedDir, speed * deltaTime);
-        position.x += velocity.x;
-        position.z += velocity.z;
+    Vector3 normDir  = Vector3Normalize(direction);
+    float   stepDist = speed * deltaTime;
+    float   dx       = normDir.x * stepDist;
+    float   dz       = normDir.z * stepDist;
+
+    bool moved = false;
+
+    // --- Попытка 1: полный шаг ---
+    {
+        float nx = position.x + dx;
+        float nz = position.z + dz;
+        if (world->GetHeight(nx, nz) > Config::World::WATER_LEVEL) {
+            position.x = nx;
+            position.z = nz;
+            moved = true;
+        }
     }
-    if (world != nullptr) {
-        position.y = world->GetHeight(position.x, position.z);
+
+    // --- Попытка 2: скольжение по X (сохраняем Z) ---
+    if (!moved && fabsf(dx) > 0.001f) {
+        float nx = position.x + dx;
+        if (world->GetHeight(nx, position.z) > Config::World::WATER_LEVEL) {
+            position.x = nx;
+            moved = true;
+        }
     }
+
+    // --- Попытка 3: скольжение по Z (сохраняем X) ---
+    if (!moved && fabsf(dz) > 0.001f) {
+        float nz = position.z + dz;
+        if (world->GetHeight(position.x, nz) > Config::World::WATER_LEVEL) {
+            position.z = nz;
+            moved = true;
+        }
+    }
+
+    // Корректируем высоту по рельефу в любом случае
+    if (world) position.y = world->GetHeight(position.x, position.z);
+
+    return moved;
 }
