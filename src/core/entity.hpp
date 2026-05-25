@@ -19,4 +19,6 @@ class Entity {
 
         bool IsAlive() const {return isAlive; }
         void Die() { isAlive = false; }
+
+        virtual Color GetDeathColor() const { return GRAY; }
 };

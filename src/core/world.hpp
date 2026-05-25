@@ -15,6 +15,7 @@ struct Particle {
     Vector3 velocity;
     Color   color;
     float   lifetime;
+    float   maxLifetime; 
     bool    isHeart;
 };
 
@@ -22,8 +23,6 @@ class World {
 private:
     std::vector<Particle>               particles;
     std::vector<std::unique_ptr<Entity>> entities;
-    // Сущности, рождённые во время Update — добавляются ПОСЛЕ цикла итерации,
-    // чтобы не инвалидировать итераторы (UB/crash)
     std::vector<std::unique_ptr<Entity>> pendingEntities;
 
     Model terrainModel;

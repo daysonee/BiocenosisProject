@@ -181,6 +181,7 @@ int main(){
 
         EndDrawing();
     }
+
     EnableCursor();
     CloseWindow();
     return 0;

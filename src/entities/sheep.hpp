@@ -36,13 +36,11 @@ public:
 
     ~Sheep() override = default;
 
-    // startStage=ADULT по умолчанию — при спавне мира нужна живая популяция
     Sheep(Vector3 startPosition,
           Config::Sheep::AgeStage startStage = Config::Sheep::AgeStage::ADULT);
 
     Config::Sheep::AgeStage GetAgeStage() const { return ageStage; }
 
-    // Учитываем mateTarget — партнёра не может забрать другая овца
     bool CanMate() const {
         return ageStage      == Config::Sheep::AgeStage::ADULT
             && hunger        >= Config::Sheep::MATING_HUNGER_THRESHOLD
@@ -58,4 +56,5 @@ public:
     void Draw() override;
 
     void SetFlockCenter(Vector3 center) { flockCenter = center; }
+    Color GetDeathColor() const override { return LIGHTGRAY; }
 };

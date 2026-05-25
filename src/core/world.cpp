@@ -7,6 +7,7 @@
 #include <vector>
 #include <rlgl.h>
 #include "raymath.h"
+#include <algorithm>
 
 World::World(){
 
@@ -283,11 +284,26 @@ void World::Update(float deltaTime){
         }
     }
 
-    // Flush: добавляем сущностей, рождённых во время Update (ягнята и т.д.)
+    for (auto& entity : entities) {
+        entity->Update(deltaTime, this);
+    }
+
+    for (const auto& entity : entities) {
+        if (!entity->IsAlive()) {
+            SpawnParticles(entity->GetPosition(), entity->GetDeathColor(), 15, false);
+        }
+    }
+
+    entities.erase(
+        std::remove_if(entities.begin(), entities.end(), [](const std::unique_ptr<Entity>& e) {
+            return !e->IsAlive();
+        }),
+        entities.end()
+    );
+
     for (auto& e : pendingEntities) entities.push_back(std::move(e));
     pendingEntities.clear();
 
-    // Обновляем партиклы
     UpdateParticles(deltaTime);
 }
 
@@ -339,31 +355,104 @@ void World::Draw(){
             DrawCube(p.position, s, s, s, p.color);
         }
     }
+    for (const auto& p : particles) {
+        float lifeRatio = Clamp(p.lifetime / p.maxLifetime, 0.0f, 1.0f);
+        
+        if (p.isHeart) {
+            float s = 0.35f;
+            if (lifeRatio < 0.25f) {
+                s *= (lifeRatio / 0.25f); 
+            }
+            
+            DrawCube(p.position, s, s, s, RED);
+            DrawCubeWires(p.position, s, s, s, MAROON); 
+        } else {
+            float s = 0.22f * lifeRatio;
+            if (s < 0.04f) s = 0.04f; 
+            
+            DrawCube(p.position, s, s, s, p.color);
+            
+            Color strokeColor = {
+                (unsigned char)(p.color.r * 0.6f),
+                (unsigned char)(p.color.g * 0.6f),
+                (unsigned char)(p.color.b * 0.6f),
+                255
+            };
+            DrawCubeWires(p.position, s, s, s, strokeColor);
+        }
+    }
 }
+
 
 void World::SpawnParticles(Vector3 pos, Color color, int count, bool isHeart) {
     for (int i = 0; i < count; i++) {
         Particle p;
-        p.position = pos;
-        // Случайный разлет
-        p.velocity = {
-            (float)GetRandomValue(-20, 20) / 10.0f,
-            (float)GetRandomValue(10, 40) / 10.0f,
-            (float)GetRandomValue(-20, 20) / 10.0f
-        };
+        
+        float rx = (float)GetRandomValue(-4, 4) / 10.0f;  // -0.4 .. 0.4
+        float ry = (float)GetRandomValue(3, 12) / 10.0f;  // 0.3 .. 1.2 (уровень тела животного)
+        float rz = (float)GetRandomValue(-4, 4) / 10.0f;  // -0.4 .. 0.4
+        
+        p.position = { pos.x + rx, pos.y + ry, pos.z + rz };
         p.color = color;
-        p.lifetime = isHeart ? 2.0f : 1.0f; // сердечки живут чуть дольше
         p.isHeart = isHeart;
+
+        if (isHeart) {
+            p.velocity = {
+                (float)GetRandomValue(-8, 8) / 10.0f,
+                (float)GetRandomValue(12, 22) / 10.0f, // Вертикальный импульс
+                (float)GetRandomValue(-8, 8) / 10.0f
+            };
+            p.lifetime = 1.2f + (float)GetRandomValue(0, 6) / 10.0f; // живут 1.2 .. 1.8 сек
+        } else {
+            // Обычные партиклы (разрушение блоков / еда)
+            p.velocity = {
+                (float)GetRandomValue(-30, 30) / 10.0f,
+                (float)GetRandomValue(15, 45) / 10.0f,
+                (float)GetRandomValue(-30, 30) / 10.0f
+            };
+            p.lifetime = 0.5f + (float)GetRandomValue(0, 5) / 10.0f; // живут 0.5 .. 1.0 сек
+        }
+        
+        p.maxLifetime = p.lifetime; // Фиксируем стартовое время жизни
         particles.push_back(p);
     }
 }
 
-// Вызови этот метод внутри World::Update
 void World::UpdateParticles(float deltaTime) {
     for (auto it = particles.begin(); it != particles.end();) {
+        if (it->isHeart) {
+            // плавно плывут вверх + покачиваются из стороны в сторону
+            it->velocity.y = 1.3f; // Константный подъём
+            
+            // Swaying-эффект (покачивание) на основе оставшегося времени жизни
+            it->velocity.x = sinf(it->lifetime * 5.0f) * 0.4f;
+            it->velocity.z = cosf(it->lifetime * 5.0f) * 0.4f;
+        } else {
+            // Логика обычных блоков: гравитация + трение о воздух
+            it->velocity.y -= 9.81f * deltaTime; // Падение вниз
+            
+            // Drag (плавное замедление горизонтального разлёта)
+            float drag = 1.0f - (2.0f * deltaTime);
+            if (drag < 0.0f) drag = 0.0f;
+            it->velocity.x *= drag;
+            it->velocity.z *= drag;
+        }
+
         it->position.x += it->velocity.x * deltaTime;
         it->position.y += it->velocity.y * deltaTime;
         it->position.z += it->velocity.z * deltaTime;
+
+        // Фиксация над землёй (чтобы частицы не тонули в геометрии ландшафта)
+        float terrainHeight = GetHeight(it->position.x, it->position.z);
+        if (it->position.y < terrainHeight) {
+            it->position.y = terrainHeight;
+            if (!it->isHeart) {
+                it->velocity.y *= -0.2f; // Лёгкий майнкрафтовский отскок при ударе о землю
+                it->velocity.x *= 0.5f;  
+                it->velocity.z *= 0.5f;
+            }
+        }
+
         it->lifetime -= deltaTime;
         
         if (it->lifetime <= 0.0f) {
