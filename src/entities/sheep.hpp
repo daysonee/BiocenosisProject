@@ -11,48 +11,47 @@ private:
     float myHungerThreshold;
     float myMaxHunger;
 
-    // Центр родного стада — овечка держится рядом
     Vector3 flockCenter;
 
-    // Таймер между переходами IDLE -> WANDERING
     float stateTimer = 0.0f;
-
-    // Указатель на охотника (волка). nullptr если нет угрозы
     Entity* targetHunter = nullptr;
 
-    // --- Детектор застревания ---
-    float   stuckCheckTimer   = 0.0f;   // до следующей проверки
-    Vector3 posAtLastCheck    = {};     // позиция на момент последней проверки
-    int     stuckCount        = 0;     // сколько интервалов подряд не двигались
+    float   stuckCheckTimer = 0.0f;
+    Vector3 posAtLastCheck  = {};
+    int     stuckCount      = 0;
 
-    // Подбирает случайную СУХУЮ точку вблизи центра стада
     void PickNewWanderTarget(World* world);
-    // Аварийный выход из кучи: толчок + новая цель
     void ForceEscape(World* world);
 
     Config::Sheep::AgeStage ageStage;
-    float maxAgeInCurrentStage; // Сколько нужно прожить в текущей стадии
+    float maxAgeInCurrentStage = 0.0f;
     float ageTimer = 0.0f;
 
-    float matingCooldownTimer = 0.0f;
-    float matingProgressTimer = 0.0f;
-    Sheep* mateTarget = nullptr; // Ссылка на выбранного партнера
+    float matingCooldownTimer  = 0.0f;
+    float matingProgressTimer  = 0.0f;
+    Sheep* mateTarget          = nullptr;
 
 public:
     bool isMating = false;
 
     ~Sheep() override = default;
 
-    Sheep(Vector3 startPosition, Config::Sheep::AgeStage startStage = Config::Sheep::AgeStage::BABY);
-    
+    // startStage=ADULT по умолчанию — при спавне мира нужна живая популяция
+    Sheep(Vector3 startPosition,
+          Config::Sheep::AgeStage startStage = Config::Sheep::AgeStage::ADULT);
+
     Config::Sheep::AgeStage GetAgeStage() const { return ageStage; }
-    bool CanMate() const { 
-        return ageStage == Config::Sheep::AgeStage::ADULT && 
-               hunger >= Config::Sheep::MATING_HUNGER_THRESHOLD && 
-               matingCooldownTimer <= 0.0f && 
-               isAlive; 
+
+    // Учитываем mateTarget — партнёра не может забрать другая овца
+    bool CanMate() const {
+        return ageStage      == Config::Sheep::AgeStage::ADULT
+            && hunger        >= Config::Sheep::MATING_HUNGER_THRESHOLD
+            && matingCooldownTimer <= 0.0f
+            && mateTarget    == nullptr
+            && !isMating
+            && isAlive;
     }
-    
+
     void SetMateTarget(Sheep* partner) { mateTarget = partner; }
 
     void Update(float deltaTime, World* world) override;

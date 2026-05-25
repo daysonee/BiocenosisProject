@@ -208,6 +208,10 @@ void World::AddEntity(std::unique_ptr<Entity> entity){
     entities.push_back(std::move(entity));
 }
 
+void World::QueueEntity(std::unique_ptr<Entity> entity){
+    pendingEntities.push_back(std::move(entity));
+}
+
 Vector3 World::ResolveTreeCollisions(Vector3 animalPos, float animalRadius) const {
     Vector3 correctedPos = animalPos;
     float treeRadius = 0.25f; 
@@ -278,6 +282,13 @@ void World::Update(float deltaTime){
             if(dynamic_cast<Wolf*>(entity.get())) wolfCount++;
         }
     }
+
+    // Flush: добавляем сущностей, рождённых во время Update (ягнята и т.д.)
+    for (auto& e : pendingEntities) entities.push_back(std::move(e));
+    pendingEntities.clear();
+
+    // Обновляем партиклы
+    UpdateParticles(deltaTime);
 }
 
 void World::Draw(){
@@ -318,12 +329,14 @@ void World::Draw(){
     }
 
     for (const auto& p : particles) {
+        // Размер частицы убывает по мере угасания
+        float t = Clamp(p.lifetime, 0.0f, 1.0f);
         if (p.isHeart) {
-            // Маленький красный кубик (или можно сделать крестик), символизирующий сердечко
-            DrawCube(p.position, 0.2f, 0.2f, 0.2f, RED);
+            float s = 1.5f * (0.5f + 0.5f * t); // 0.75..1.5 — уменьшается
+            DrawCube(p.position, s, s, s * 0.6f, RED);
         } else {
-            // Серый прах смерти
-            DrawCube(p.position, 0.15f, 0.15f, 0.15f, p.color);
+            float s = 1.0f * t;
+            DrawCube(p.position, s, s, s, p.color);
         }
     }
 }
@@ -360,4 +373,3 @@ void World::UpdateParticles(float deltaTime) {
         }
     }
 }
-
