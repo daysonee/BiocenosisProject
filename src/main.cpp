@@ -10,9 +10,58 @@
 #include "camera/CameraSpawn.hpp"
 #include "camera/CameraController.hpp"
 #include "ui/EcoStatsDisplay.hpp"
-#include "entities/crab.hpp"
 #include <memory>
 #include <cmath>
+
+// СПАВН ВОЛКОВ СТАЯМИ В ЛЕСУ (между SAND_LEVEL и BIOME_THRESHOLD)
+// Каждая стая: 1 ADULT-вожак + 1-2 MEDIUM + 0-1 BABY, общий packId
+void SpawnWolfPacksInForest(World& world) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    const int totalPacks = Config::Wolf::PACK_COUNT;
+    int packsSpawned = 0;
+
+    const float FOREST_MIN = Config::World::SAND_LEVEL;
+    const float FOREST_MAX = Config::World::BIOME_THRESHOLD;
+
+    const int maxAttempts = 3000;
+    for (int attempt = 0; attempt < maxAttempts && packsSpawned < totalPacks; ++attempt) {
+        float cx = (float)GetRandomValue(-halfMap, halfMap);
+        float cz = (float)GetRandomValue(-halfMap, halfMap);
+        float cy = world.GetHeight(cx, cz);
+
+        if (cy <= FOREST_MIN || cy > FOREST_MAX) continue;
+
+        const int packSize = GetRandomValue(Config::Wolf::PACK_SIZE_MIN,
+                                            Config::Wolf::PACK_SIZE_MAX);
+        const int packId = packsSpawned;
+
+        // Структура: первый — ADULT-вожак, далее MEDIUM, последние могут быть BABY
+        for (int i = 0; i < packSize; ++i) {
+            float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
+            float radius = (float)GetRandomValue(5, (int)(Config::Wolf::PACK_RADIUS * 10)) / 10.0f;
+
+            float wx = cx + cosf(angle) * radius;
+            float wz = cz + sinf(angle) * radius;
+            if (wx < -halfMap || wx > halfMap || wz < -halfMap || wz > halfMap) continue;
+            float wy = world.GetHeight(wx, wz);
+            if (wy <= Config::World::WATER_LEVEL) continue;
+
+            Config::Wolf::AgeStage age;
+            if (i == 0) {
+                age = Config::Wolf::AgeStage::ADULT;
+            } else if (i == packSize - 1 && packSize >= 3 && GetRandomValue(0, 1) == 0) {
+                age = Config::Wolf::AgeStage::BABY;
+            } else {
+                age = Config::Wolf::AgeStage::MEDIUM;
+            }
+
+            auto wolf = std::make_unique<Wolf>((Vector3){ wx, wy, wz }, age, packId);
+            if (i == 0) wolf->PromoteToLeader();
+            world.AddEntity(std::move(wolf));
+        }
+        ++packsSpawned;
+    }
+}
 
 // СПАВН ОВЕЦ СТАДАМИ ИСКЛЮЧИТЕЛЬНО НА ЯРКО-ЗЕЛЕНЫХ ЛУГАХ
 void SpawnSheepSmartAndLogical(World& world) {
@@ -81,23 +130,6 @@ void SpawnSheepSmartAndLogical(World& world) {
     }
 }
 
-void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
-    const int halfMap = Config::World::MAP_SIZE / 2;
-    int spawned = 0;
-    int attempts = 3000;
-
-    for (int i = 0; i < attempts && spawned < countToSpawn; ++i) {
-        float rx = (float)GetRandomValue(-halfMap, halfMap);
-        float rz = (float)GetRandomValue(-halfMap, halfMap);
-        float ry = world.GetHeight(rx, rz);
-
-        if (ry >= Config::World::WATER_LEVEL && ry <= Config::World::SAND_LEVEL) {
-            world.AddEntity(std::make_unique<Crab>((Vector3){ rx, ry, rz }));
-            spawned++;
-        }
-    }
-}
-
 int main() {
     SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_FULLSCREEN_MODE);
 
@@ -128,9 +160,8 @@ int main() {
 
     World myWorld;
 
-    myWorld.AddEntity(std::make_unique<Wolf>((Vector3) { 10.0f, 0.0f, 10.0f }));
+    SpawnWolfPacksInForest(myWorld);
     SpawnSheepSmartAndLogical(myWorld);
-    SpawnCrabsOnBeaches(myWorld, 50);
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -251,13 +282,20 @@ int main() {
         static int lastSheepCount = 0;
         int sheepDelta = aliveSheep - lastSheepCount;
         if (sheepDelta < 0) {
-            // Стало меньше — съели/умерли
             totalSheepEaten += (-sheepDelta);
         } else if (sheepDelta > 0) {
-            // Стало больше — родились
             totalSheepBorn += sheepDelta;
         }
         lastSheepCount = aliveSheep;
+
+        static int lastWolfCount = 0;
+        int wolfDelta = aliveWolves - lastWolfCount;
+        if (wolfDelta < 0) {
+            totalWolvesStarved += (-wolfDelta);
+        } else if (wolfDelta > 0) {
+            totalWolvesBorn += wolfDelta;
+        }
+        lastWolfCount = aliveWolves;
 
         stats.setSheepCount(aliveSheep, totalSheepBorn);
         stats.setWolfCount(aliveWolves, totalWolvesBorn);
@@ -311,4 +349,3 @@ int main() {
     CloseWindow();
     return 0;
 }
-

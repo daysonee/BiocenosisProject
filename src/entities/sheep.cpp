@@ -123,6 +123,7 @@ void Sheep::Update(float deltaTime, World* world) {
     if (hunger < 0.0f) hunger = 0.0f;
 
     if (matingCooldownTimer > 0.0f) matingCooldownTimer -= deltaTime;
+    if (dodgeCooldownTimer  > 0.0f) dodgeCooldownTimer  -= deltaTime;
 
     // ── 2. ВОЗРАСТ ───────────────────────────────────────────────────────────
     ageTimer += deltaTime;
@@ -148,15 +149,20 @@ void Sheep::Update(float deltaTime, World* world) {
     if (targetHunter != nullptr && !targetHunter->IsAlive()) targetHunter = nullptr;
 
     bool wolfNearby = false;
+    Wolf* closestWolf = nullptr;
+    float closestWolfDist = myVisionRadius;
     for (const auto& entity : world->GetEntities()) {
         if (!entity->IsAlive()) continue;
         Wolf* wolf = dynamic_cast<Wolf*>(entity.get());
-        if (wolf && Vector3Distance(position, wolf->GetPosition()) < myVisionRadius) {
-            wolfNearby   = true;
-            targetHunter = wolf;
-            break;
+        if (!wolf) continue;
+        float d = Vector3Distance(position, wolf->GetPosition());
+        if (d < closestWolfDist) {
+            closestWolfDist = d;
+            closestWolf = wolf;
+            wolfNearby = true;
         }
     }
+    if (wolfNearby) targetHunter = closestWolf;
 
     // Волк рядом — сбрасываем мейтинг
     if (wolfNearby) {
@@ -273,21 +279,131 @@ void Sheep::Update(float deltaTime, World* world) {
 
             case AnimalState::FLEEING: {
                 speed = myRunSpeed;
-                if (targetHunter) {
-                    Vector3 runDir = Vector3Subtract(position, targetHunter->GetPosition());
-                    runDir.y = 0.0f;
-                    if (Vector3Length(runDir) < 0.01f) {
-                        float a = (float)GetRandomValue(0, 360) * DEG2RAD;
-                        runDir = { cosf(a), 0.0f, sinf(a) };
-                    }
-                    runDir = Vector3Normalize(runDir);
-                    int halfMap = Config::World::MAP_SIZE / 2;
-                    float tx = Clamp(position.x + runDir.x * 20.0f,
-                                     -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-                    float tz = Clamp(position.z + runDir.z * 20.0f,
-                                     -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-                    targetPosition = { tx, world->GetHeight(tx, tz), tz };
+                if (!targetHunter) {
+                    MoveTowardsTarget(deltaTime, world);
+                    break;
                 }
+
+                // ── 1. БАЗОВОЕ НАПРАВЛЕНИЕ "ОТ ВОЛКА" ────────────────
+                Vector3 fromWolf = Vector3Subtract(position, targetHunter->GetPosition());
+                fromWolf.y = 0.0f;
+                if (Vector3Length(fromWolf) < 0.01f) {
+                    float a = (float)GetRandomValue(0, 360) * DEG2RAD;
+                    fromWolf = { cosf(a), 0.0f, sinf(a) };
+                }
+                fromWolf = Vector3Normalize(fromWolf);
+
+                float distToWolf = Vector3Distance(position, targetHunter->GetPosition());
+
+                // ── 2. БЕГ К СТАДУ (если соседи в стороне от волка) ──
+                Vector3 flockCenterPos = { 0.0f, 0.0f, 0.0f };
+                int neighborCount = 0;
+                for (const auto& entity : world->GetEntities()) {
+                    if (!entity->IsAlive() || entity.get() == this) continue;
+                    Sheep* neighbor = dynamic_cast<Sheep*>(entity.get());
+                    if (!neighbor) continue;
+                    float d = Vector3Distance(position, neighbor->GetPosition());
+                    if (d < Config::Sheep::FLOCK_SUPPORT_RADIUS) {
+                        flockCenterPos.x += neighbor->GetPosition().x;
+                        flockCenterPos.z += neighbor->GetPosition().z;
+                        ++neighborCount;
+                    }
+                }
+                if (neighborCount >= 2) {
+                    flockCenterPos.x /= neighborCount;
+                    flockCenterPos.z /= neighborCount;
+                    Vector3 toFlock = {
+                        flockCenterPos.x - position.x, 0.0f,
+                        flockCenterPos.z - position.z
+                    };
+                    if (Vector3Length(toFlock) > 0.5f) {
+                        toFlock = Vector3Normalize(toFlock);
+                        // Стадо должно быть НЕ за волком — иначе побежим прямо к нему
+                        if (Vector3DotProduct(fromWolf, toFlock) > 0.0f) {
+                            float w = Config::Sheep::FLOCK_SUPPORT_WEIGHT;
+                            fromWolf.x = fromWolf.x * (1.0f - w) + toFlock.x * w;
+                            fromWolf.z = fromWolf.z * (1.0f - w) + toFlock.z * w;
+                            fromWolf = Vector3Normalize(fromWolf);
+                        }
+                    }
+                }
+
+                // ── 3. ФИНТ или ЗИГЗАГ ──────────────────────────────
+                bool didDodge = false;
+                if (distToWolf < Config::Sheep::DODGE_RANGE
+                    && dodgeCooldownTimer <= 0.0f)
+                {
+                    // Финт на ±90°. Выбираем сторону подальше от ОСТАЛЬНЫХ волков,
+                    // чтобы не нырнуть прямо на другого члена стаи.
+                    Vector3 packCenter = { 0.0f, 0.0f, 0.0f };
+                    int packCount = 0;
+                    for (const auto& entity : world->GetEntities()) {
+                        if (!entity->IsAlive() || entity.get() == targetHunter) continue;
+                        Wolf* w = dynamic_cast<Wolf*>(entity.get());
+                        if (!w) continue;
+                        float wd = Vector3Distance(position, w->GetPosition());
+                        if (wd < 15.0f) {
+                            packCenter.x += w->GetPosition().x;
+                            packCenter.z += w->GetPosition().z;
+                            ++packCount;
+                        }
+                    }
+
+                    float sign;
+                    if (packCount > 0) {
+                        // Вектор «к стае других волков» (от меня)
+                        packCenter.x = packCenter.x / packCount - position.x;
+                        packCenter.z = packCenter.z / packCount - position.z;
+                        // Перпендикуляр к fromWolf, повёрнутый на +90°
+                        Vector3 perpPlus = { -fromWolf.z, 0.0f, fromWolf.x };
+                        // Если perpPlus указывает В сторону стаи — выбираем -90°
+                        float dot = perpPlus.x * packCenter.x + perpPlus.z * packCenter.z;
+                        sign = (dot > 0.0f) ? -1.0f : 1.0f;
+                    } else {
+                        sign = (GetRandomValue(0, 1) == 0) ? -1.0f : 1.0f;
+                    }
+
+                    float angle = sign * Config::Sheep::DODGE_ANGLE_DEG * DEG2RAD;
+                    float cs = cosf(angle), sn = sinf(angle);
+                    Vector3 rotated = {
+                        fromWolf.x * cs - fromWolf.z * sn, 0.0f,
+                        fromWolf.x * sn + fromWolf.z * cs
+                    };
+                    fromWolf = rotated;
+                    dodgeCooldownTimer = Config::Sheep::DODGE_COOLDOWN;
+                    zigzagAngle = 0.0f;
+                    zigzagTimer = Config::Sheep::ZIGZAG_INTERVAL_MAX;
+                    didDodge = true;
+                }
+
+                if (!didDodge) {
+                    // Обычный зигзаг
+                    zigzagTimer -= deltaTime;
+                    if (zigzagTimer <= 0.0f) {
+                        float degMin = -Config::Sheep::ZIGZAG_ANGLE_DEG;
+                        float degMax =  Config::Sheep::ZIGZAG_ANGLE_DEG;
+                        float deg    = (float)GetRandomValue((int)degMin, (int)degMax);
+                        zigzagAngle  = deg * DEG2RAD;
+                        zigzagTimer  = (float)GetRandomValue(
+                            (int)(Config::Sheep::ZIGZAG_INTERVAL_MIN * 100),
+                            (int)(Config::Sheep::ZIGZAG_INTERVAL_MAX * 100)) / 100.0f;
+                    }
+                    float cs = cosf(zigzagAngle), sn = sinf(zigzagAngle);
+                    Vector3 rotated = {
+                        fromWolf.x * cs - fromWolf.z * sn, 0.0f,
+                        fromWolf.x * sn + fromWolf.z * cs
+                    };
+                    fromWolf = rotated;
+                }
+
+                // ── 4. ЦЕЛЕВАЯ ТОЧКА И ДВИЖЕНИЕ ─────────────────────
+                int halfMap = Config::World::MAP_SIZE / 2;
+                float tx = Clamp(position.x + fromWolf.x * 15.0f,
+                                 -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+                float tz = Clamp(position.z + fromWolf.z * 15.0f,
+                                 -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+                targetPosition = { tx, world->GetHeight(tx, tz), tz };
+
                 MoveTowardsTarget(deltaTime, world);
                 break;
             }

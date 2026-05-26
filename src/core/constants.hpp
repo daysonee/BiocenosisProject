@@ -93,7 +93,7 @@ namespace Config {
         // Радиус разброса при первоначальном спавне стада
         constexpr float SPAWN_FLOCK_RADIUS    = 5.0f;
 
-        constexpr float VISION_RADIUS    = 5.0f;
+        constexpr float VISION_RADIUS    = 8.0f;
         constexpr float EAT_RADUIS       = 1.0f;
         constexpr float REACH_TARGET_DIST = 0.2f;
 
@@ -113,20 +113,74 @@ namespace Config {
         constexpr int   HUNGER_THRESHOLD_DECREASE = 85;
         constexpr int   VISION_INCREASE      = 115;
         constexpr int   VISION_DECREASE      = 85;
+
+        // ── ТАКТИКА ПОБЕГА ────────────────────────────────────────
+        // Зигзаг: периодически меняем угол бега на ±ZIGZAG_ANGLE_DEG
+        constexpr float ZIGZAG_INTERVAL_MIN  = 0.4f;
+        constexpr float ZIGZAG_INTERVAL_MAX  = 0.8f;
+        constexpr float ZIGZAG_ANGLE_DEG     = 50.0f;
+        // Финт в последний момент: если волк ближе DODGE_RANGE,
+        // резко поворачиваем на ±DODGE_ANGLE_DEG (волк промахивается прыжком)
+        constexpr float DODGE_RANGE          = 5.0f;
+        constexpr float DODGE_ANGLE_DEG      = 90.0f;
+        constexpr float DODGE_COOLDOWN       = 2.0f;
+        // Бег к стаду: ищем соседей в радиусе и смещаем направление
+        // к их центру массы (только если стадо НЕ в стороне волка)
+        constexpr float FLOCK_SUPPORT_RADIUS = 12.0f;
+        constexpr float FLOCK_SUPPORT_WEIGHT = 0.30f;
     }
 
     namespace Wolf {
-        constexpr float SPEED_WALK    = 2.2f;   // было 1.8
-        constexpr float SPEED_RUN     = 5.5f;   // было 4.5
+        constexpr float SPEED_WALK    = 2.2f;
+        constexpr float SPEED_RUN     = 5.5f;
         constexpr float VISION_RADIUS = 8.0f;
         constexpr float ATTACK_RADIUS = 1.2f;
 
-        // Прыжок-рывок: волк делает быстрый бросок когда жертва близко
-        constexpr float POUNCE_SPEED    = 11.0f; // ~вдвое быстрее бега
-        constexpr float POUNCE_RANGE    = 4.5f;  // с какой дистанции триггерится рывок
-        constexpr float POUNCE_DURATION = 0.55f; // длительность рывка
-        constexpr float POUNCE_COOLDOWN = 2.5f;  // откат до следующего рывка
-        constexpr float POUNCE_REACH    = 1.6f;  // во время рывка хватаем шире
+        // Прыжок-рывок
+        constexpr float POUNCE_SPEED    = 11.0f;
+        constexpr float POUNCE_RANGE    = 4.5f;
+        constexpr float POUNCE_DURATION = 0.55f;
+        constexpr float POUNCE_COOLDOWN = 4.5f;
+        constexpr float POUNCE_REACH    = 1.6f;
+        constexpr float REST_SPEED_FACTOR = 0.65f;
+        constexpr float LEAD_MAX_TIME     = 1.0f;
+
+        // ── ВОЗРАСТНЫЕ СТАДИИ ─────────────────────────────────────
+        enum class AgeStage { BABY, MEDIUM, ADULT };
+
+        constexpr float TIME_TO_GROW_BABY_MIN   = 180.0f;
+        constexpr float TIME_TO_GROW_BABY_MAX   = 240.0f;
+        constexpr float TIME_TO_GROW_MEDIUM_MIN = 360.0f;
+        constexpr float TIME_TO_GROW_MEDIUM_MAX = 420.0f;
+        constexpr float TIME_ADULT_LIFESPAN     = 720.0f;
+
+        // BABY-волчонок
+        constexpr float BABY_SPEED_FACTOR    = 1.30f;
+        constexpr float BABY_SIZE_FACTOR     = 0.65f;
+        constexpr int   BABY_KILLS_TO_FULL   = 2;
+        constexpr float BABY_COOLDOWN_MULT   = 2.5f;
+
+        // ADULT-вожак
+        constexpr float ADULT_POUNCE_REACH   = 3.0f;
+        constexpr float ADULT_LEAD_MAX_TIME  = 2.0f;
+        constexpr float ADULT_SIZE_FACTOR    = 1.10f;
+
+        // ── ПЛАВАНИЕ ──────────────────────────────────────────────
+        constexpr float SWIM_SPEED_FACTOR = 0.55f;
+        constexpr float SHAKE_DURATION    = 1.0f;
+
+        // ── РАЗМНОЖЕНИЕ ───────────────────────────────────────────
+        constexpr float MATING_HUNGER_THRESHOLD = 70.0f;
+        constexpr float MATING_COOLDOWN         = 60.0f;
+        constexpr float MATING_APPROACH_DIST    = 1.2f;
+        constexpr float MATING_PROCESS_TIME     = 3.5f;
+        constexpr float MATING_SEARCH_RADIUS    = 40.0f;
+
+        // ── СПАВН СТАЯМИ В ЛЕСУ ──────────────────────────────────
+        constexpr int   PACK_COUNT    = 10;
+        constexpr int   PACK_SIZE_MIN = 3;
+        constexpr int   PACK_SIZE_MAX = 4;
+        constexpr float PACK_RADIUS   = 6.0f;
     }
 
     namespace Hunter {

@@ -3,7 +3,6 @@
 #include "../entities/wolf.hpp"
 #include "../entities/sheep.hpp"
 #include "../entities/plant.hpp"
-#include "../entities/hunter.hpp"
 #include "../utils/noise.hpp"
 #include <vector>
 #include <rlgl.h>
@@ -80,8 +79,6 @@ World::World(){
                 leafTopTransforms.push_back   (MatrixTranslate(rx, trunkTopY + 1.4f, rz));
             }
         }
-
-        
     }
 
 
@@ -125,24 +122,7 @@ World::World(){
         });
     }
     
-// Ищем подходящее место в горах (где высота выше PLANT_LEVEL — серые скалы)
-    bool hutPlaced = false;
-    for (int attempts = 0; attempts < 2000; attempts++) {
-        float rx = (float)GetRandomValue(-halfMap, halfMap);
-        float rz = (float)GetRandomValue(-halfMap, halfMap);
-        float ry = GetHeight(rx, rz);
-        
-        if (ry > Config::World::PLANT_LEVEL) {
-            hunterHutPosition = { rx, ry, rz };
-            hutPlaced = true;
-            break;
-        }
-    }
-    // Фолбэк на случай непредвиденного сида без гор
-    if (!hutPlaced) hunterHutPosition = { 0.0f, GetHeight(0.0f, 0.0f), 0.0f };
 
-    // Спавним Охотника ровно один раз прямо в его хижине
-    AddEntity(std::make_unique<Hunter>(hunterHutPosition));
 }
 
 World::~World(){
@@ -345,6 +325,42 @@ void World::Update(float deltaTime){
         }
     }
 
+    // ── НАСЛЕДОВАНИЕ ВОЖАКА ─────────────────────────────────────────
+    // Если ADULT-вожак умер от старости — драка между MEDIUM той же
+    // стаи, и один из них (случайный) становится новым вожаком.
+    // Визуально: облако серой «пыли драки» на месте смерти.
+    for (const auto& deadEntity : entities) {
+        if (deadEntity->IsAlive()) continue;
+        Wolf* deadWolf = dynamic_cast<Wolf*>(deadEntity.get());
+        if (!deadWolf || !deadWolf->DiedOfOldAge() || !deadWolf->IsLeader()) continue;
+
+        int pid = deadWolf->GetPackId();
+        Vector3 deathPos = deadWolf->GetPosition();
+
+        // Партиклы драки
+        SpawnParticles(deathPos, (Color){180, 180, 180, 255}, 22, false);
+        SpawnParticles(deathPos, (Color){120, 100, 90, 255}, 15, false);
+
+        // Собираем MEDIUM той же стаи
+        std::vector<Wolf*> candidates;
+        for (const auto& e : entities) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (w && w->GetPackId() == pid
+                && w->GetAgeStage() == Config::Wolf::AgeStage::MEDIUM) {
+                candidates.push_back(w);
+            }
+        }
+        if (!candidates.empty()) {
+            int idx = GetRandomValue(0, (int)candidates.size() - 1);
+            candidates[idx]->PromoteToLeader();
+            // Эффектный «победный» взрыв на новом вожаке
+            SpawnParticles(candidates[idx]->GetPosition(),
+                           (Color){200, 60, 60, 255}, 12, false);
+        }
+        // Если MEDIUM нет — стая без вожака, до пока BABY не дорастёт
+    }
+
     entities.erase(
         std::remove_if(entities.begin(), entities.end(), [](const std::unique_ptr<Entity>& e) {
             return !e->IsAlive();
@@ -439,31 +455,6 @@ void World::Draw(){
             DrawCubeWires(p.position, s, s, s, strokeColor);
         }
     }
-
-// --- ДЕТАЛИЗИРОВАННАЯ ХИЖИНА ОХОТНИКА ---
-    // 1. Основной бревенчатый сруб
-    DrawCube(hunterHutPosition, 4.0f, 3.0f, 4.0f, DARKBROWN);
-    DrawCubeWires(hunterHutPosition, 4.0f, 3.0f, 4.0f, BLACK); // Грани досок
-    
-    // 2. Дверь (выступает на переднем фасаде)
-    Vector3 doorPos = { hunterHutPosition.x, hunterHutPosition.y - 0.5f, hunterHutPosition.z + 2.01f };
-    DrawCube(doorPos, 1.2f, 2.0f, 0.1f, BEIGE);
-    DrawCubeWires(doorPos, 1.2f, 2.0f, 0.1f, BLACK);
-
-    // 3. Окно (со светящимся голубым стеклом)
-    Vector3 windowPos = { hunterHutPosition.x + 1.2f, hunterHutPosition.y + 0.3f, hunterHutPosition.z + 2.01f };
-    DrawCube(windowPos, 0.8f, 0.8f, 0.1f, SKYBLUE);
-    
-    // 4. Каменная дымовая труба (сбоку дома)
-    Vector3 chimneyPos = { hunterHutPosition.x - 1.5f, hunterHutPosition.y + 1.5f, hunterHutPosition.z - 1.0f };
-    DrawCube(chimneyPos, 0.8f, 4.0f, 0.8f, GRAY);
-    DrawCubeWires(chimneyPos, 0.8f, 4.0f, 0.8f, BLACK);
-
-    // 5. Деревянная крыша (четырехскатная)
-    Vector3 roofPos = { hunterHutPosition.x, hunterHutPosition.y + 1.5f, hunterHutPosition.z };
-    DrawCylinder(roofPos, 0.0f, 3.5f, 2.0f, 4, MAROON); 
-    DrawCylinderWires(roofPos, 0.0f, 3.5f, 2.0f, 4, BLACK);
-    // ----------------------------------------
 }
 
 
@@ -583,15 +574,7 @@ float World::EatGrass(int index) {
     }
     return 0.0f;
 }
-
+// ── Draw2D: охотник рисует свой тег через этот метод ──────────────────
 void World::Draw2D(Camera camera) {
-    for (auto& entity : entities) {
-        if (entity->IsAlive()) {
-            // Ищем нашего охотника среди сущностей, чтобы вызвать его Draw2D
-            Hunter* hunter = dynamic_cast<Hunter*>(entity.get());
-            if (hunter) {
-                hunter->Draw2D(camera);
-            }
-        }
-    }
+    // Пока пуст — hunter.Draw2D вызывается из main или draw
 }

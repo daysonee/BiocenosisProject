@@ -16,6 +16,11 @@ private:
     float stateTimer = 0.0f;
     Entity* targetHunter = nullptr;
 
+    // Тактика побега
+    float zigzagTimer        = 0.0f;
+    float zigzagAngle        = 0.0f;   // радианы, текущее отклонение
+    float dodgeCooldownTimer = 0.0f;
+
     float   stuckCheckTimer = 0.0f;
     Vector3 posAtLastCheck  = {};
     int     stuckCount      = 0;
