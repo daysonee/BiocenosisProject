@@ -63,6 +63,7 @@ private:
     const int mapSize = Config::World::MAP_SIZE;
     float offsetX, offsetZ;
 
+    Vector3 hunterHutPosition;
 public:
     World();
     ~World();
@@ -88,4 +89,6 @@ public:
 
     const std::vector<Vector3>& GetTreePositions() const { return treePositions; }
     const std::vector<std::unique_ptr<Entity>>& GetEntities() const { return entities; }
+
+    void Draw2D(Camera camera);
 };

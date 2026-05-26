@@ -128,4 +128,14 @@ namespace Config {
         constexpr float POUNCE_COOLDOWN = 2.5f;  // откат до следующего рывка
         constexpr float POUNCE_REACH    = 1.6f;  // во время рывка хватаем шире
     }
+
+    namespace Hunter {
+        constexpr float SPEED_WALK     = 2.5f;
+        constexpr float SPEED_RUN      = 5.0f;
+        constexpr float VISION_RADIUS  = 25.0f; 
+        constexpr float SHOOT_RANGE    = 12.0f; 
+        constexpr float SHOOT_COOLDOWN = 4.0f;  
+        constexpr float REST_DURATION  = 20.0f; 
+        constexpr float HUNT_TIMEOUT   = 40.0f; 
+    }
 }

@@ -3,6 +3,7 @@
 #include "../entities/wolf.hpp"
 #include "../entities/sheep.hpp"
 #include "../entities/plant.hpp"
+#include "../entities/hunter.hpp"
 #include "../utils/noise.hpp"
 #include <vector>
 #include <rlgl.h>
@@ -79,6 +80,8 @@ World::World(){
                 leafTopTransforms.push_back   (MatrixTranslate(rx, trunkTopY + 1.4f, rz));
             }
         }
+
+        
     }
 
 
@@ -122,7 +125,24 @@ World::World(){
         });
     }
     
+// Ищем подходящее место в горах (где высота выше PLANT_LEVEL — серые скалы)
+    bool hutPlaced = false;
+    for (int attempts = 0; attempts < 2000; attempts++) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = GetHeight(rx, rz);
+        
+        if (ry > Config::World::PLANT_LEVEL) {
+            hunterHutPosition = { rx, ry, rz };
+            hutPlaced = true;
+            break;
+        }
+    }
+    // Фолбэк на случай непредвиденного сида без гор
+    if (!hutPlaced) hunterHutPosition = { 0.0f, GetHeight(0.0f, 0.0f), 0.0f };
 
+    // Спавним Охотника ровно один раз прямо в его хижине
+    AddEntity(std::make_unique<Hunter>(hunterHutPosition));
 }
 
 World::~World(){
@@ -419,6 +439,31 @@ void World::Draw(){
             DrawCubeWires(p.position, s, s, s, strokeColor);
         }
     }
+
+// --- ДЕТАЛИЗИРОВАННАЯ ХИЖИНА ОХОТНИКА ---
+    // 1. Основной бревенчатый сруб
+    DrawCube(hunterHutPosition, 4.0f, 3.0f, 4.0f, DARKBROWN);
+    DrawCubeWires(hunterHutPosition, 4.0f, 3.0f, 4.0f, BLACK); // Грани досок
+    
+    // 2. Дверь (выступает на переднем фасаде)
+    Vector3 doorPos = { hunterHutPosition.x, hunterHutPosition.y - 0.5f, hunterHutPosition.z + 2.01f };
+    DrawCube(doorPos, 1.2f, 2.0f, 0.1f, BEIGE);
+    DrawCubeWires(doorPos, 1.2f, 2.0f, 0.1f, BLACK);
+
+    // 3. Окно (со светящимся голубым стеклом)
+    Vector3 windowPos = { hunterHutPosition.x + 1.2f, hunterHutPosition.y + 0.3f, hunterHutPosition.z + 2.01f };
+    DrawCube(windowPos, 0.8f, 0.8f, 0.1f, SKYBLUE);
+    
+    // 4. Каменная дымовая труба (сбоку дома)
+    Vector3 chimneyPos = { hunterHutPosition.x - 1.5f, hunterHutPosition.y + 1.5f, hunterHutPosition.z - 1.0f };
+    DrawCube(chimneyPos, 0.8f, 4.0f, 0.8f, GRAY);
+    DrawCubeWires(chimneyPos, 0.8f, 4.0f, 0.8f, BLACK);
+
+    // 5. Деревянная крыша (четырехскатная)
+    Vector3 roofPos = { hunterHutPosition.x, hunterHutPosition.y + 1.5f, hunterHutPosition.z };
+    DrawCylinder(roofPos, 0.0f, 3.5f, 2.0f, 4, MAROON); 
+    DrawCylinderWires(roofPos, 0.0f, 3.5f, 2.0f, 4, BLACK);
+    // ----------------------------------------
 }
 
 
@@ -537,4 +582,16 @@ float World::EatGrass(int index) {
         case Config::Grass::Type::COASTAL: return Config::Grass::COASTAL_NUTRITION;
     }
     return 0.0f;
+}
+
+void World::Draw2D(Camera camera) {
+    for (auto& entity : entities) {
+        if (entity->IsAlive()) {
+            // Ищем нашего охотника среди сущностей, чтобы вызвать его Draw2D
+            Hunter* hunter = dynamic_cast<Hunter*>(entity.get());
+            if (hunter) {
+                hunter->Draw2D(camera);
+            }
+        }
+    }
 }
