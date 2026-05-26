@@ -26,6 +26,7 @@ namespace Config {
         constexpr float WATER_LEVEL      = 20.0f;   
         constexpr float SAND_LEVEL       = 23.0f;   
         constexpr float BIOME_THRESHOLD  = 35.0f;  
+        constexpr float PLANT_LEVEL      = 65.0f;
         constexpr int   TREE_COUNT       = 5000;
         constexpr int   BUSH_COUNT      = 1000;
     }

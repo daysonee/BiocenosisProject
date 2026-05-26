@@ -58,9 +58,9 @@ World::World(){
             if (!overlap) {
                 treePositions.push_back({rx, ry, rz}); 
 
-                trunkTransforms.push_back(MatrixTranslate(rx, ry + 0.4f, rz));
-                leafBottomTransforms.push_back(MatrixTranslate(rx, ry + 0.6f + 0.6f, rz));
-                leafMidTransforms.push_back(MatrixTranslate(rx, ry + 1.4f + 0.5f, rz));
+                trunkTransforms.push_back(MatrixTranslate(rx, ry + 0.0f, rz));
+                leafBottomTransforms.push_back(MatrixTranslate(rx, ry + 0.6f + 0.2f, rz));
+                leafMidTransforms.push_back(MatrixTranslate(rx, ry + 1.4f + 0.1f, rz));
                 leafTopTransforms.push_back(MatrixTranslate(rx, ry + 2.1f + 0.4f, rz));
             }
         }
@@ -144,7 +144,7 @@ Color World::GetBiomeColor(float height) const {
     if (height <= Config::World::BIOME_THRESHOLD) {
         return (Color){45, 110, 60, 255}; 
     }
-    if (height <= 65.0f) {
+    if (height <= Config::World::PLANT_LEVEL) {
         return (Color){110, 160, 80, 255}; 
     }
     

@@ -66,11 +66,11 @@ public:
     void UpdateParticles(float deltaTime);
 
     void AddEntity(std::unique_ptr<Entity> entity);
-    // Безопасный spawn внутри Update: добавляет в очередь, не инвалидирует итератор
     void QueueEntity(std::unique_ptr<Entity> entity);
 
     void Update(float deltaTime);
     void Draw();
 
+    const std::vector<Vector3>& GetTreePositions() const { return treePositions; }
     const std::vector<std::unique_ptr<Entity>>& GetEntities() const { return entities; }
 };

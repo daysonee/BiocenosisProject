@@ -13,7 +13,7 @@
 #include <memory>
 #include <cmath>
 
-// СПАВН ОВЕЦ СТАДАМИ
+// СПАВН ОВЕЦ СТАДАМИ ИСКЛЮЧИТЕЛЬНО НА ЯРКО-ЗЕЛЕНЫХ ЛУГАХ
 void SpawnSheepSmartAndLogical(World& world) {
     const int halfMap = Config::World::MAP_SIZE / 2;
     const int totalSheepToSpawn = Config::Sheep::INITIAL_COUNT;
@@ -21,27 +21,20 @@ void SpawnSheepSmartAndLogical(World& world) {
 
     const int   minFlockSize = 3;
     const int   maxFlockSize = 6;
-    const int   maxFlockAttempts = 1000;
+    const int   maxFlockAttempts = 3000;
+
+    // Луга: выше леса (BIOME_THRESHOLD=35) и ниже гор (PLANT_LEVEL=65).
+    // Деревья растут ТОЛЬКО до BIOME_THRESHOLD, так что здесь их нет совсем.
+    const float MEADOW_MIN = Config::World::BIOME_THRESHOLD;   // 35.0
+    const float MEADOW_MAX = Config::World::PLANT_LEVEL;        // 65.0
 
     for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < totalSheepToSpawn; ++attempt) {
         float cx = (float)GetRandomValue(-halfMap, halfMap);
         float cz = (float)GetRandomValue(-halfMap, halfMap);
         float cy = world.GetHeight(cx, cz);
 
-        if (cy <= Config::World::WATER_LEVEL || cy > Config::World::SAND_LEVEL + 0.3f) {
-            continue;
-        }
-
-        bool isZoneSafe = true;
-        for (const auto& entity : world.GetEntities()) {
-            if (dynamic_cast<Wolf*>(entity.get())) {
-                if (Vector3Distance({ cx, cy, cz }, entity->GetPosition()) < Config::Sheep::SAFE_ZONE_FROM_WOLVES) {
-                    isZoneSafe = false;
-                    break;
-                }
-            }
-        }
-        if (!isZoneSafe) continue;
+        // Только открытые луга (без деревьев по определению биома)
+        if (cy <= MEADOW_MIN || cy > MEADOW_MAX) continue;
 
         const int currentFlockSize = GetRandomValue(minFlockSize, maxFlockSize);
         const Vector3 flockCenter = { cx, cy, cz };
@@ -49,7 +42,7 @@ void SpawnSheepSmartAndLogical(World& world) {
         for (int i = 0; i < currentFlockSize; ++i) {
             if (spawnedCount >= totalSheepToSpawn) break;
 
-            float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+            float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
             float radius = (float)GetRandomValue(10, (int)(Config::Sheep::SPAWN_FLOCK_RADIUS * 10)) / 10.0f;
 
             float sx = cx + cosf(angle) * radius;
@@ -58,24 +51,27 @@ void SpawnSheepSmartAndLogical(World& world) {
             if (sx < -halfMap || sx > halfMap || sz < -halfMap || sz > halfMap) continue;
 
             float sy = world.GetHeight(sx, sz);
-            if (sy <= Config::World::WATER_LEVEL) continue;
 
-            auto sheep = std::make_unique<Sheep>((Vector3) { sx, sy, sz });
+            // Каждая овца тоже должна быть на лугу
+            if (sy <= MEADOW_MIN || sy > MEADOW_MAX) continue;
+
+            auto sheep = std::make_unique<Sheep>((Vector3){ sx, sy, sz });
             sheep->SetFlockCenter(flockCenter);
             world.AddEntity(std::move(sheep));
             ++spawnedCount;
         }
     }
 
+    // Резервный спавн — те же ограничения по биому
     if (spawnedCount < totalSheepToSpawn) {
-        int fallbackAttempts = 1000;
+        int fallbackAttempts = 2000;
         while (spawnedCount < totalSheepToSpawn && fallbackAttempts-- > 0) {
             float rx = (float)GetRandomValue(-halfMap, halfMap);
             float rz = (float)GetRandomValue(-halfMap, halfMap);
             float ry = world.GetHeight(rx, rz);
 
-            if (ry > Config::World::WATER_LEVEL) {
-                auto sheep = std::make_unique<Sheep>((Vector3) { rx, ry, rz });
+            if (ry > MEADOW_MIN && ry <= MEADOW_MAX) {
+                auto sheep = std::make_unique<Sheep>((Vector3){ rx, ry, rz });
                 sheep->SetFlockCenter({ rx, ry, rz });
                 world.AddEntity(std::move(sheep));
                 ++spawnedCount;
@@ -97,19 +93,14 @@ int main() {
 
     // ========== МУЗЫКА ==========
     InitAudioDevice();
-    // Пробуем разные форматы (mp3, ogg, wav)
     Music backgroundMusic;
 
-    // Сначала пробуем mp3
     backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.mp3");
 
-    // Если файл не загрузился, проверяем существует ли он
     if (backgroundMusic.stream.buffer == nullptr) {
-        // Пробуем ogg
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.ogg");
     }
     if (backgroundMusic.stream.buffer == nullptr) {
-        // Пробуем wav
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.wav");
     }
 
@@ -138,6 +129,9 @@ int main() {
     CameraController cameraController(startPos, startYaw, startPitch);
 
     // СТАТИСТИКА
+    BeginMode3D(camera);
+        myWorld.Draw(); 
+    EndMode3D();   
     EcoStatsDisplay stats(1050, 10);
 
     double totalSimTime = 0.0;
@@ -174,16 +168,14 @@ int main() {
         float dt = GetFrameTime();
         if (dt > 0.033f) dt = 0.033f;
 
-        // ========== ОБНОВЛЕНИЕ МУЗЫКИ (каждый кадр) ==========
+        // ========== ОБНОВЛЕНИЕ МУЗЫКИ ==========
         UpdateMusicStream(backgroundMusic);
         // =====================================================
 
-        // ПАУЗА ПО КЛАВИШЕ P
         if (IsKeyPressed(KEY_P)) {
             isPaused = !isPaused;
         }
 
-        // УПРАВЛЕНИЕ КУРСОРОМ
         if (IsKeyPressed(KEY_ESCAPE)) {
             mouseCaptured = false;
             EnableCursor();
@@ -206,7 +198,6 @@ int main() {
             ToggleFullscreen();
         }
 
-        // КАМЕРА (работает всегда, даже на паузе)
         if (mouseCaptured) {
             cameraController.Update(dt, camera, true);
         }
@@ -217,7 +208,6 @@ int main() {
             cameraController.SetPosition(camera.position);
         }
 
-        // КНОПКА УСКОРЕНИЯ
         bool isBtnHovered = !mouseCaptured && CheckCollisionPointRec(mousePos, speedBtn);
         if (isBtnHovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
             if (timeScale == 1.0f) timeScale = 5.0f;
@@ -226,13 +216,11 @@ int main() {
             else timeScale = 1.0f;
         }
 
-        // МИР (обновляется только если НЕ на паузе)
         if (!isPaused) {
             myWorld.Update(dt * timeScale);
             totalSimTime += dt * timeScale;
         }
 
-        // СБОР СТАТИСТИКИ
         int aliveSheep = 0, aliveWolves = 0, grassPatches = 0;
         for (const auto& entity : myWorld.GetEntities()) {
             if (!entity->IsAlive()) continue;
@@ -270,7 +258,6 @@ int main() {
         DrawRectangleLinesEx(speedBtn, 2, BLACK);
         DrawText(TextFormat("TIME: %.0fx", timeScale), speedBtn.x + 20, speedBtn.y + 10, 20, BLACK);
 
-        // ИНДИКАТОР ПАУЗЫ
         if (isPaused) {
             DrawText("PAUSED [P]", screenWidth / 2 - 80, 20, 30, RED);
         }
@@ -280,10 +267,8 @@ int main() {
                 screenWidth - 200, 20, 18, YELLOW);
         }
 
-        // СТАТИСТИКА
         stats.Draw();
 
-        // ПОДСКАЗКИ
         if (!mouseCaptured) {
             DrawText("Click in window to capture mouse", screenWidth / 2 - 200, screenHeight - 30, 18, DARKGRAY);
         }
@@ -295,10 +280,8 @@ int main() {
         EndDrawing();
     }
 
-    // ========== ОСВОБОЖДЕНИЕ РЕСУРСОВ МУЗЫКИ ==========
     UnloadMusicStream(backgroundMusic);
     CloseAudioDevice();
-    // ===================================================
 
     EnableCursor();
     CloseWindow();
