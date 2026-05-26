@@ -10,6 +10,7 @@
 #include "camera/CameraSpawn.hpp"
 #include "camera/CameraController.hpp"
 #include "ui/EcoStatsDisplay.hpp"
+#include "entities/crab.hpp"
 #include <memory>
 #include <cmath>
 
@@ -80,6 +81,23 @@ void SpawnSheepSmartAndLogical(World& world) {
     }
 }
 
+void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    int spawned = 0;
+    int attempts = 3000;
+
+    for (int i = 0; i < attempts && spawned < countToSpawn; ++i) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = world.GetHeight(rx, rz);
+
+        if (ry >= Config::World::WATER_LEVEL && ry <= Config::World::SAND_LEVEL) {
+            world.AddEntity(std::make_unique<Crab>((Vector3){ rx, ry, rz }));
+            spawned++;
+        }
+    }
+}
+
 int main() {
     SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_FULLSCREEN_MODE);
 
@@ -112,6 +130,7 @@ int main() {
 
     myWorld.AddEntity(std::make_unique<Wolf>((Vector3) { 10.0f, 0.0f, 10.0f }));
     SpawnSheepSmartAndLogical(myWorld);
+    SpawnCrabsOnBeaches(myWorld, 50);
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -292,3 +311,4 @@ int main() {
     CloseWindow();
     return 0;
 }
+
