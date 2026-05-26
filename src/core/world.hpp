@@ -30,14 +30,24 @@ private:
     std::vector<Vector3> treePositions;
     std::vector<Vector3> grassPositions;
 
-    Mesh trunkMesh, leafBottomMesh, leafMidMesh, leafTopMesh, bushMesh;
-    Material trunkMat, leafMat, bushMat;
+    Mesh trunkMesh, leafBottomMesh, leafMidMesh, leafTopMesh;
+    Material trunkMat, leafMat;
 
     std::vector<Matrix> trunkTransforms;
     std::vector<Matrix> leafBottomTransforms;
     std::vector<Matrix> leafMidTransforms;
     std::vector<Matrix> leafTopTransforms;
-    std::vector<Matrix> bushTransforms;
+
+    // ── Три вида травы ────────────────────────────────────────────────
+    Mesh     meadowMesh,  fernMesh,  coastalMesh;
+    Material meadowMat,   fernMat,   coastalMat;
+
+    struct GrassPatch {
+        Vector3            position;
+        Config::Grass::Type type;
+        bool               alive;
+    };
+    std::vector<GrassPatch> grassPatches;
 
     float plantSpawnTimer;
 
@@ -58,6 +68,11 @@ public:
     ~World();
 
     Vector3 ResolveTreeCollisions(Vector3 animalPos, float animalRadius) const;
+
+
+    int  FindNearestGrass(Vector3 from, float maxRadius,
+                          Vector3& outPos, Config::Grass::Type& outType) const;
+    float EatGrass(int index);
 
     float GetHeight(float x, float z) const;
     Color GetBiomeColor(float height) const;

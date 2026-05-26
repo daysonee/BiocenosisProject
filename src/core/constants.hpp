@@ -28,12 +28,37 @@ namespace Config {
         constexpr float BIOME_THRESHOLD  = 35.0f;  
         constexpr float PLANT_LEVEL      = 65.0f;
         constexpr int   TREE_COUNT       = 5000;
-        constexpr int   BUSH_COUNT      = 1000;
+        constexpr int   BUSH_COUNT      = 1000; // (legacy, не используется)
+    }
+
+    namespace Grass {
+        // Кол-во на старте
+        constexpr int MEADOW_COUNT  = 600; // обычная трава на лугах
+        constexpr int FERN_COUNT    = 400; // папоротники в лесу
+        constexpr int COASTAL_COUNT = 200; // прибрежная трава у воды
+
+        // Насыщение от поедания (восстановление голода)
+        constexpr float MEADOW_NUTRITION  = 60.0f; // сытная луговая трава
+        constexpr float FERN_NUTRITION    = 35.0f; // папоротник — так себе
+        constexpr float COASTAL_NUTRITION = 45.0f; // прибрежная — средне
+
+        // Высотные границы спавна
+        // Прибрежная: от уреза воды до полосы песка чуть выше
+        constexpr float COASTAL_MIN = Config::World::WATER_LEVEL;       // 20
+        constexpr float COASTAL_MAX = Config::World::SAND_LEVEL + 2.0f; // 25
+        // Папоротники: лесная зона (там же где деревья)
+        constexpr float FERN_MIN    = Config::World::SAND_LEVEL;        // 23
+        constexpr float FERN_MAX    = Config::World::BIOME_THRESHOLD;   // 35
+        // Луговая: луга выше леса
+        constexpr float MEADOW_MIN  = Config::World::BIOME_THRESHOLD;   // 35
+        constexpr float MEADOW_MAX  = Config::World::PLANT_LEVEL;       // 65
+
+        enum class Type { MEADOW, FERN, COASTAL };
     }
 
     namespace Sheep {
         // Вдвое больше овец, с запасом для прибрежного спавна
-        constexpr int   INITIAL_COUNT    = 100;
+        constexpr int   INITIAL_COUNT    = 200;
 
         // Добавить внутрь namespace Config::Sheep
         enum class AgeStage {
@@ -50,8 +75,8 @@ namespace Config {
         constexpr float TIME_ADULT_LIFESPAN     = 720.0f; // 12 минут
 
         // Настройки спаривания
-        constexpr float MATING_HUNGER_THRESHOLD = 80.0f;  // Овца хочет спариваться только если сыта > 80
-        constexpr float MATING_COOLDOWN         = 60.0f;  // Откат после родов (1 минута)
+        constexpr float MATING_HUNGER_THRESHOLD = 60.0f;  // Овца хочет спариваться при сытости > 60
+        constexpr float MATING_COOLDOWN         = 30.0f;  // Откат после родов (30 сек)
         constexpr float MATING_APPROACH_DIST    = 1.0f;   // Дистанция для начала процесса
         constexpr float MATING_PROCESS_TIME     = 3.0f;   // Сколько секунд нужно стоять рядом
 
@@ -91,9 +116,16 @@ namespace Config {
     }
 
     namespace Wolf {
-        constexpr float SPEED_WALK    = 1.8f;
-        constexpr float SPEED_RUN     = 4.5f;
+        constexpr float SPEED_WALK    = 2.2f;   // было 1.8
+        constexpr float SPEED_RUN     = 5.5f;   // было 4.5
         constexpr float VISION_RADIUS = 8.0f;
         constexpr float ATTACK_RADIUS = 1.2f;
+
+        // Прыжок-рывок: волк делает быстрый бросок когда жертва близко
+        constexpr float POUNCE_SPEED    = 11.0f; // ~вдвое быстрее бега
+        constexpr float POUNCE_RANGE    = 4.5f;  // с какой дистанции триггерится рывок
+        constexpr float POUNCE_DURATION = 0.55f; // длительность рывка
+        constexpr float POUNCE_COOLDOWN = 2.5f;  // откат до следующего рывка
+        constexpr float POUNCE_REACH    = 1.6f;  // во время рывка хватаем шире
     }
 }

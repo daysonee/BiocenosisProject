@@ -27,11 +27,18 @@ World::World(){
     leafBottomMesh = GenMeshCone(1.2f, 1.2f, 5);
     leafMidMesh = GenMeshCone(0.9f, 1.0f, 5);
     leafTopMesh = GenMeshCone(0.6f, 0.8f, 5);
-    bushMesh = GenMeshSphere(0.8f, 6, 6); 
+
+    // Три вида травы — разные размеры и формы
+    meadowMesh  = GenMeshSphere(0.35f, 6, 6);   // невысокие кочки
+    fernMesh    = GenMeshCone(0.45f, 1.1f, 5);  // высокие папоротники
+    coastalMesh = GenMeshSphere(0.5f,  6, 6);   // прибрежные пучки
 
     trunkMat = LoadMaterialDefault(); trunkMat.maps[MATERIAL_MAP_DIFFUSE].color = BROWN;
-    leafMat = LoadMaterialDefault();  leafMat.maps[MATERIAL_MAP_DIFFUSE].color = DARKGREEN;
-    bushMat = LoadMaterialDefault(); bushMat.maps[MATERIAL_MAP_DIFFUSE].color = GREEN;
+    leafMat  = LoadMaterialDefault(); leafMat.maps[MATERIAL_MAP_DIFFUSE].color  = DARKGREEN;
+
+    meadowMat  = LoadMaterialDefault(); meadowMat.maps[MATERIAL_MAP_DIFFUSE].color  = (Color){120, 200, 80,  255}; // ярко-зелёный
+    fernMat    = LoadMaterialDefault(); fernMat.maps[MATERIAL_MAP_DIFFUSE].color    = (Color){40,  90,  45,  255}; // тёмно-зелёный
+    coastalMat = LoadMaterialDefault(); coastalMat.maps[MATERIAL_MAP_DIFFUSE].color = (Color){170, 200, 110, 255}; // желтовато-зелёный
 
 
     int halfMap = Config::World::MAP_SIZE / 2;
@@ -58,24 +65,53 @@ World::World(){
             if (!overlap) {
                 treePositions.push_back({rx, ry, rz}); 
 
-                trunkTransforms.push_back(MatrixTranslate(rx, ry + 0.0f, rz));
-                leafBottomTransforms.push_back(MatrixTranslate(rx, ry + 0.6f + 0.2f, rz));
-                leafMidTransforms.push_back(MatrixTranslate(rx, ry + 1.4f + 0.1f, rz));
-                leafTopTransforms.push_back(MatrixTranslate(rx, ry + 2.1f + 0.4f, rz));
+                // ФИКС ЛЕВИТАЦИИ: основание ствола опускаем на 0.2 ниже
+                // средней высоты, чтобы при наклоне поверхности корни
+                // не висели в воздухе. GenMeshCylinder строится вверх от точки.
+                const float TRUNK_SINK   = 0.2f;
+                const float TRUNK_HEIGHT = 0.8f; // совпадает с GenMeshCylinder
+                float trunkBaseY = ry - TRUNK_SINK;
+                float trunkTopY  = trunkBaseY + TRUNK_HEIGHT;
+
+                trunkTransforms.push_back(MatrixTranslate(rx, trunkBaseY, rz));
+                leafBottomTransforms.push_back(MatrixTranslate(rx, trunkTopY + 0.0f, rz));
+                leafMidTransforms.push_back   (MatrixTranslate(rx, trunkTopY + 0.7f, rz));
+                leafTopTransforms.push_back   (MatrixTranslate(rx, trunkTopY + 1.4f, rz));
             }
         }
     }
 
 
-    for (int i = 0; i < Config::World::BUSH_COUNT; i++) {
-        float rx = (float)GetRandomValue(-halfMap, halfMap);
-        float rz = (float)GetRandomValue(-halfMap, halfMap);
-        float ry = GetHeight(rx, rz);
-        
-        if (ry > Config::World::BIOME_THRESHOLD && ry <= 65.0f) {
-            bushTransforms.push_back(MatrixTranslate(rx, ry + 0.2f, rz));
+    // ── СПАВН ТРЁХ ВИДОВ ТРАВЫ ────────────────────────────────────────
+    auto spawnGrass = [&](int count, float minH, float maxH,
+                          Config::Grass::Type type) {
+        int attempts = 0;
+        int spawned  = 0;
+        while (spawned < count && attempts < count * 10) {
+            ++attempts;
+            float rx = (float)GetRandomValue(-halfMap, halfMap);
+            float rz = (float)GetRandomValue(-halfMap, halfMap);
+            float ry = GetHeight(rx, rz);
+            if (ry > minH && ry <= maxH) {
+                GrassPatch p;
+                p.position = { rx, ry, rz };
+                p.type     = type;
+                p.alive    = true;
+                grassPatches.push_back(p);
+                ++spawned;
+            }
         }
-    }
+    };
+
+    spawnGrass(Config::Grass::MEADOW_COUNT,
+               Config::Grass::MEADOW_MIN,  Config::Grass::MEADOW_MAX,
+               Config::Grass::Type::MEADOW);
+    spawnGrass(Config::Grass::FERN_COUNT,
+               Config::Grass::FERN_MIN,    Config::Grass::FERN_MAX,
+               Config::Grass::Type::FERN);
+    spawnGrass(Config::Grass::COASTAL_COUNT,
+               Config::Grass::COASTAL_MIN, Config::Grass::COASTAL_MAX,
+               Config::Grass::Type::COASTAL);
 
     int maxRainDrops = Config::World::RAINDROPS_COUNT; 
     for (int i = 0; i < maxRainDrops; i++) {
@@ -96,11 +132,15 @@ World::~World(){
     UnloadMesh(leafBottomMesh);
     UnloadMesh(leafMidMesh);
     UnloadMesh(leafTopMesh);
-    UnloadMesh(bushMesh);
+    UnloadMesh(meadowMesh);
+    UnloadMesh(fernMesh);
+    UnloadMesh(coastalMesh);
 
     UnloadMaterial(trunkMat);
     UnloadMaterial(leafMat);
-    UnloadMaterial(bushMat);
+    UnloadMaterial(meadowMat);
+    UnloadMaterial(fernMat);
+    UnloadMaterial(coastalMat);
 }
 
 void World::ChangeWeather(){
@@ -259,14 +299,9 @@ void World::Update(float deltaTime){
 
         plantSpawnTimer -= deltaTime;
         if (plantSpawnTimer <= 0){
-            float rx = (float)GetRandomValue(-halfMap, halfMap);
-            float rz = (float)GetRandomValue(-halfMap, halfMap);
-            float ry = GetHeight(rx, rz);
-            
-            if (ry > Config::World::SAND_LEVEL) {
-                AddEntity(std::make_unique<Plant>((Vector3){rx, ry, rz}));
-                plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
-            }
+            // Дождевой спавн Plant-сущностей отключён — теперь трава
+            // живёт в grassPatches (фиксированный набор, поедается насмерть).
+            plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
         }
     }
 
@@ -282,10 +317,6 @@ void World::Update(float deltaTime){
             if(dynamic_cast<Sheep*>(entity.get())) sheepCount++;
             if(dynamic_cast<Wolf*>(entity.get())) wolfCount++;
         }
-    }
-
-    for (auto& entity : entities) {
-        entity->Update(deltaTime, this);
     }
 
     for (const auto& entity : entities) {
@@ -316,8 +347,15 @@ void World::Draw(){
         (Color){ 30, 120, 190, 255 } 
     );
 
-    for (const auto& mat : bushTransforms) {
-        DrawMesh(bushMesh, bushMat, mat);
+    // Отрисовка живой травы по типам
+    for (const auto& g : grassPatches) {
+        if (!g.alive) continue;
+        Matrix m = MatrixTranslate(g.position.x, g.position.y + 0.2f, g.position.z);
+        switch (g.type) {
+            case Config::Grass::Type::MEADOW:  DrawMesh(meadowMesh,  meadowMat,  m); break;
+            case Config::Grass::Type::FERN:    DrawMesh(fernMesh,    fernMat,    m); break;
+            case Config::Grass::Type::COASTAL: DrawMesh(coastalMesh, coastalMat, m); break;
+        }
     }
 
     for (size_t i = 0; i < trunkTransforms.size(); i++) {
@@ -461,4 +499,42 @@ void World::UpdateParticles(float deltaTime) {
             ++it;
         }
     }
+}
+// ── Поиск ближайшей живой травы ────────────────────────────────────────
+int World::FindNearestGrass(Vector3 from, float maxRadius,
+                            Vector3& outPos, Config::Grass::Type& outType) const {
+    int   bestIdx  = -1;
+    float bestDist = maxRadius;
+    for (size_t i = 0; i < grassPatches.size(); ++i) {
+        if (!grassPatches[i].alive) continue;
+        float d = Vector3Distance(from, grassPatches[i].position);
+        if (d < bestDist) {
+            bestDist = d;
+            bestIdx  = (int)i;
+        }
+    }
+    if (bestIdx >= 0) {
+        outPos  = grassPatches[bestIdx].position;
+        outType = grassPatches[bestIdx].type;
+    }
+    return bestIdx;
+}
+
+// ── Поедание травы по индексу ──────────────────────────────────────────
+float World::EatGrass(int index) {
+    if (index < 0 || index >= (int)grassPatches.size()) return 0.0f;
+    if (!grassPatches[index].alive) return 0.0f;
+    grassPatches[index].alive = false;
+
+    // Партиклы исчезающей травы: ярко-зелёный взрыв из листочков
+    Vector3 burstPos = grassPatches[index].position;
+    burstPos.y += 0.3f;
+    SpawnParticles(burstPos, (Color){90, 220, 60, 255}, 8, false);
+
+    switch (grassPatches[index].type) {
+        case Config::Grass::Type::MEADOW:  return Config::Grass::MEADOW_NUTRITION;
+        case Config::Grass::Type::FERN:    return Config::Grass::FERN_NUTRITION;
+        case Config::Grass::Type::COASTAL: return Config::Grass::COASTAL_NUTRITION;
+    }
+    return 0.0f;
 }

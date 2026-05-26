@@ -11,13 +11,30 @@ static constexpr float WOLF_MAX_WATER_CROSSING = 8.0f;
 static constexpr float WOLF_SCAN_STEP = 0.6f;
 
 Wolf::Wolf(Vector3 startPosition) : Animal(startPosition) {
-    speed      = 3.5f;
+    speed      = Config::Wolf::SPEED_RUN;
     hunger     = 100.0f;
     state      = AnimalState::WANDERING;
     targetPrey = nullptr;
 
+    pounceTimer         = 0.0f;
+    pounceCooldownTimer = 0.0f;
+
     // Первая цель блуждания — поблизости от точки спавна
     targetPosition = startPosition;
+}
+
+// Запуск прыжка-рывка если жертва близко и кулдаун истёк
+void Wolf::TryStartPounce(float distToPrey, World* world) {
+    if (pounceTimer > 0.0f) return;            // уже прыгаем
+    if (pounceCooldownTimer > 0.0f) return;    // ещё в кулдауне
+    if (distToPrey > Config::Wolf::POUNCE_RANGE) return;
+
+    pounceTimer         = Config::Wolf::POUNCE_DURATION;
+    pounceCooldownTimer = Config::Wolf::POUNCE_COOLDOWN;
+
+    // Визуальный эффект отталкивания: облачко пыли под лапами
+    Vector3 dustPos = { position.x, position.y + 0.1f, position.z };
+    world->SpawnParticles(dustPos, (Color){150, 130, 100, 255}, 6, false);
 }
 
 // Сканирует путь вперёд: входит ли он в воду и выходит ли обратно на сушу
@@ -69,6 +86,17 @@ void Wolf::MoveWithWaterCrossing(float deltaTime, World* world) {
 
 void Wolf::Update(float deltaTime, World* world) {
     if (!IsAlive()) return;
+
+    // ----------------------------------------------------------------
+    // 0. ТАЙМЕРЫ ПРЫЖКА
+    // ----------------------------------------------------------------
+    if (pounceCooldownTimer > 0.0f) pounceCooldownTimer -= deltaTime;
+    if (pounceTimer > 0.0f) {
+        pounceTimer -= deltaTime;
+        speed = Config::Wolf::POUNCE_SPEED;
+    } else {
+        speed = Config::Wolf::SPEED_RUN;
+    }
 
     // ----------------------------------------------------------------
     // 1. ГОЛОД
@@ -141,13 +169,31 @@ void Wolf::Update(float deltaTime, World* world) {
 
             if (targetPrey) {
                 targetPosition = targetPrey->GetPosition();
+
+                // Если жертва уже близко — пытаемся ринуться рывком
+                TryStartPounce(closestDistance, world);
+
                 MoveWithWaterCrossing(deltaTime, world);
 
-                if (closestDistance < Config::Wolf::ATTACK_RADIUS) {
+                // Радиус хватки: обычно ATTACK_RADIUS, в прыжке шире
+                float reach = (pounceTimer > 0.0f)
+                              ? Config::Wolf::POUNCE_REACH
+                              : Config::Wolf::ATTACK_RADIUS;
+
+                if (closestDistance < reach) {
+                    // ☠ Кровавые красные партиклы на месте жертвы
+                    Vector3 killPos = targetPrey->GetPosition();
+                    killPos.y += 0.5f;
+                    world->SpawnParticles(killPos, (Color){200, 30, 30, 255}, 20, false);
+                    // Тёмные брызги добавляют объёма
+                    world->SpawnParticles(killPos, (Color){120, 10, 10, 255}, 10, false);
+
                     targetPrey->Die();
-                    hunger     = 100.0f;
-                    targetPrey = nullptr;
-                    state      = AnimalState::IDLE;
+                    hunger              = 100.0f;
+                    targetPrey          = nullptr;
+                    pounceTimer         = 0.0f;     // прерываем рывок
+                    pounceCooldownTimer = Config::Wolf::POUNCE_COOLDOWN;
+                    state               = AnimalState::IDLE;
                 }
             } else {
                 // Жертв нет — бродим
@@ -167,10 +213,17 @@ void Wolf::Update(float deltaTime, World* world) {
 }
 
 void Wolf::Draw() {
-    DrawCube(position, 1.4f, 1.4f, 1.4f, DARKGRAY);
+    // Визуальный прыжок во время рывка — парабола sin(πt)
+    Vector3 drawPos = position;
+    if (pounceTimer > 0.0f) {
+        float t = 1.0f - (pounceTimer / Config::Wolf::POUNCE_DURATION); // 0 → 1
+        drawPos.y += sinf(t * PI) * 0.8f;
+    }
 
-    Vector3 eye1 = { position.x + 0.7f, position.y + 0.3f, position.z - 0.3f };
-    Vector3 eye2 = { position.x + 0.7f, position.y + 0.3f, position.z + 0.3f };
+    DrawCube(drawPos, 1.4f, 1.4f, 1.4f, DARKGRAY);
+
+    Vector3 eye1 = { drawPos.x + 0.7f, drawPos.y + 0.3f, drawPos.z - 0.3f };
+    Vector3 eye2 = { drawPos.x + 0.7f, drawPos.y + 0.3f, drawPos.z + 0.3f };
 
     DrawCube(eye1, 0.2f, 0.2f, 0.2f, RED);
     DrawCube(eye2, 0.2f, 0.2f, 0.2f, RED);

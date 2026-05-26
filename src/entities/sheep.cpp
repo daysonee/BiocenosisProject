@@ -182,9 +182,10 @@ void Sheep::Update(float deltaTime, World* world) {
     // ── 4. МЕЙТИНГ (при сытости, покое, взрослом возрасте) ───────────────────
     if (state != AnimalState::FLEEING && state != AnimalState::HUNGRY) {
         if (CanMate()) {
-            // Ищем свободного партнёра в радиусе зрения
+            // Ищем свободного партнёра. Радиус больше обычного зрения,
+            // т.к. стадо рассеивается во время поиска еды
             Sheep* bestMate  = nullptr;
-            float  bestDist  = myVisionRadius * 3.0f; // шире обычного зрения
+            float  bestDist  = 30.0f;
 
             for (const auto& entity : world->GetEntities()) {
                 Sheep* candidate = dynamic_cast<Sheep*>(entity.get());
@@ -293,26 +294,39 @@ void Sheep::Update(float deltaTime, World* world) {
 
             case AnimalState::HUNGRY: {
                 speed = myWalkSpeed;
-                Plant* closestPlant = nullptr;
-                float  closestDist  = myVisionRadius;
-                for (const auto& entity : world->GetEntities()) {
-                    if (!entity->IsAlive()) continue;
-                    Plant* plant = dynamic_cast<Plant*>(entity.get());
-                    if (plant) {
-                        float d = Vector3Distance(position, plant->GetPosition());
-                        if (d < closestDist) { closestDist = d; closestPlant = plant; }
+
+                // ГЛОБАЛЬНЫЙ поиск ближайшей травы — голодная овца идёт
+                // целеустремлённо, как по запаху, даже если еда вне радиуса
+                // обычного зрения. Иначе при низкой плотности травы (1200
+                // кустов на 1000×1000) овцы не успевают найти еду в радиусе 5.
+                Vector3 grassPos;
+                Config::Grass::Type grassType;
+                int grassIdx = world->FindNearestGrass(position, 9999.0f,
+                                                       grassPos, grassType);
+
+                if (grassIdx >= 0) {
+                    targetPosition = grassPos;
+                    bool moved = MoveTowardsTarget(deltaTime, world);
+
+                    // Если путь заблокирован (вода) — пытаемся обойти
+                    // через wander, иначе зависнем у воды
+                    if (!moved) {
+                        PickNewWanderTarget(world);
                     }
-                }
-                if (closestPlant) {
-                    targetPosition = closestPlant->GetPosition();
-                    MoveTowardsTarget(deltaTime, world);
-                    if (closestDist < Config::Sheep::EAT_RADUIS) {
-                        closestPlant->Die();
-                        hunger = myMaxHunger;
-                        state  = AnimalState::IDLE;
+
+                    // Проверка дистанции в 2D — y-разница на склоне не
+                    // должна мешать поеданию травы, стоящей прямо перед носом
+                    Vector2 fp = { position.x, position.z };
+                    Vector2 fg = { grassPos.x, grassPos.z };
+                    float dist2d = Vector2Distance(fp, fg);
+                    if (dist2d < Config::Sheep::EAT_RADUIS) {
+                        float nutrition = world->EatGrass(grassIdx);
+                        hunger = fminf(hunger + nutrition, myMaxHunger);
+                        state      = AnimalState::IDLE;
                         stateTimer = Config::Sheep::IDLE_TIME;
                     }
                 } else {
+                    // Травы на карте больше не осталось — бродим
                     Vector2 fp = { position.x, position.z };
                     Vector2 ft = { targetPosition.x, targetPosition.z };
                     if (Vector2Distance(fp, ft) < Config::Sheep::REACH_TARGET_DIST)

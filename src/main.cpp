@@ -230,8 +230,13 @@ int main() {
         }
 
         static int lastSheepCount = 0;
-        if (aliveSheep < lastSheepCount) {
-            totalSheepEaten += (lastSheepCount - aliveSheep);
+        int sheepDelta = aliveSheep - lastSheepCount;
+        if (sheepDelta < 0) {
+            // Стало меньше — съели/умерли
+            totalSheepEaten += (-sheepDelta);
+        } else if (sheepDelta > 0) {
+            // Стало больше — родились
+            totalSheepBorn += sheepDelta;
         }
         lastSheepCount = aliveSheep;
 
