@@ -8,7 +8,8 @@ enum class AnimalState {
     IDLE,
     WANDERING,
     HUNGRY,
-    FLEEING
+    FLEEING,
+    FIGHTING  // волки: конфликт стай
 };
 
 class Animal : public Entity {

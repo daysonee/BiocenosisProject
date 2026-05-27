@@ -21,6 +21,12 @@ private:
     float zigzagAngle        = 0.0f;   // радианы, текущее отклонение
     float dodgeCooldownTimer = 0.0f;
 
+    // После финта направление "залочено" — овца держит курс
+    // вбок несколько тиков, чтобы волк не успел скомпенсировать
+    Vector3 lockedFleeDir    = { 0.0f, 0.0f, 0.0f };
+    float   lockedFleeTimer  = 0.0f;
+    float   dodgeBoostTimer  = 0.0f;   // ускорение сразу после финта
+
     float   stuckCheckTimer = 0.0f;
     Vector3 posAtLastCheck  = {};
     int     stuckCount      = 0;

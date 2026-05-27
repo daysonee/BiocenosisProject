@@ -56,6 +56,7 @@ void SpawnWolfPacksInForest(World& world) {
             }
 
             auto wolf = std::make_unique<Wolf>((Vector3){ wx, wy, wz }, age, packId);
+            wolf->SetHomePos((Vector3){ cx, cy, cz });  // общий центр стаи
             if (i == 0) wolf->PromoteToLeader();
             world.AddEntity(std::move(wolf));
         }

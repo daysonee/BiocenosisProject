@@ -119,13 +119,16 @@ namespace Config {
         constexpr float ZIGZAG_INTERVAL_MIN  = 0.4f;
         constexpr float ZIGZAG_INTERVAL_MAX  = 0.8f;
         constexpr float ZIGZAG_ANGLE_DEG     = 50.0f;
-        // Финт в последний момент: если волк ближе DODGE_RANGE,
-        // резко поворачиваем на ±DODGE_ANGLE_DEG (волк промахивается прыжком)
-        constexpr float DODGE_RANGE          = 5.0f;
+        // Финт: если волк ближе DODGE_RANGE, овца резко поворачивает на ±DODGE_ANGLE_DEG.
+        // После финта направление УДЕРЖИВАЕТСЯ DODGE_LOCK_DURATION секунд — без этого
+        // финт длится один тик и компенсируется упреждением волка.
+        constexpr float DODGE_RANGE          = 6.0f;
         constexpr float DODGE_ANGLE_DEG      = 90.0f;
-        constexpr float DODGE_COOLDOWN       = 2.0f;
-        // Бег к стаду: ищем соседей в радиусе и смещаем направление
-        // к их центру массы (только если стадо НЕ в стороне волка)
+        constexpr float DODGE_COOLDOWN       = 1.2f;
+        constexpr float DODGE_LOCK_DURATION  = 0.7f;
+        // Скоростной рывок после финта (овца получает буст на короткое время)
+        constexpr float DODGE_SPEED_BOOST    = 1.25f;
+        // Бег к стаду
         constexpr float FLOCK_SUPPORT_RADIUS = 12.0f;
         constexpr float FLOCK_SUPPORT_WEIGHT = 0.30f;
     }
@@ -134,16 +137,25 @@ namespace Config {
         constexpr float SPEED_WALK    = 2.2f;
         constexpr float SPEED_RUN     = 5.5f;
         constexpr float VISION_RADIUS = 8.0f;
-        constexpr float ATTACK_RADIUS = 1.2f;
+        constexpr float ATTACK_RADIUS = 1.0f;   // 1.2 → 1.0
 
-        // Прыжок-рывок
-        constexpr float POUNCE_SPEED    = 11.0f;
-        constexpr float POUNCE_RANGE    = 4.5f;
+        // Прыжок-рывок (ослаблен — успех атаки должен быть ~30-35%)
+        constexpr float POUNCE_SPEED    = 9.0f;   // 11 → 9
+        constexpr float POUNCE_RANGE    = 4.0f;   // 4.5 → 4.0
         constexpr float POUNCE_DURATION = 0.55f;
         constexpr float POUNCE_COOLDOWN = 4.5f;
-        constexpr float POUNCE_REACH    = 1.6f;
+        constexpr float POUNCE_REACH    = 1.0f;   // 1.6 → 1.0 (для BABY)
+        constexpr float MEDIUM_POUNCE_REACH = 1.3f; // у MEDIUM хватка пошире
         constexpr float REST_SPEED_FACTOR = 0.65f;
-        constexpr float LEAD_MAX_TIME     = 1.0f;
+        // Упреждение сильно ослаблено — даёт шанс финту сработать
+        constexpr float LEAD_MAX_TIME     = 0.4f; // 1.0 → 0.4
+
+        // ── РАДИУС ОХОТЫ (на жертву) ─────────────────────────────
+        // Волк видит овцу только в этом радиусе. Без этого жертва
+        // ищется по всей карте и волки гонятся через полмира.
+        constexpr float HUNTING_RADIUS_BABY   = 30.0f;
+        constexpr float HUNTING_RADIUS_MEDIUM = 25.0f;
+        constexpr float HUNTING_RADIUS_ADULT  = 15.0f;
 
         // ── ВОЗРАСТНЫЕ СТАДИИ ─────────────────────────────────────
         enum class AgeStage { BABY, MEDIUM, ADULT };
@@ -152,7 +164,7 @@ namespace Config {
         constexpr float TIME_TO_GROW_BABY_MAX   = 240.0f;
         constexpr float TIME_TO_GROW_MEDIUM_MIN = 360.0f;
         constexpr float TIME_TO_GROW_MEDIUM_MAX = 420.0f;
-        constexpr float TIME_ADULT_LIFESPAN     = 720.0f;
+        constexpr float TIME_ADULT_LIFESPAN     = 540.0f;   // ~9 мин, итого ~18 мин (овцы ~22)
 
         // BABY-волчонок
         constexpr float BABY_SPEED_FACTOR    = 1.30f;
@@ -165,9 +177,28 @@ namespace Config {
         constexpr float ADULT_LEAD_MAX_TIME  = 2.0f;
         constexpr float ADULT_SIZE_FACTOR    = 1.10f;
 
-        // ── ПЛАВАНИЕ ──────────────────────────────────────────────
+        // ── ПЛАВАНИЕ И ВСТРЯХИВАНИЕ ──────────────────────────────
         constexpr float SWIM_SPEED_FACTOR = 0.55f;
-        constexpr float SHAKE_DURATION    = 1.0f;
+        constexpr float SHAKE_DURATION    = 2.0f;   // 1 → 2 сек "тупит"
+        constexpr float SHAKE_AMPLITUDE   = 0.25f;  // визуальная амплитуда тряски
+
+        // ── ГОЛОД И СМЕРТЬ ────────────────────────────────────────
+        constexpr float HUNGER_DECAY_RATE = 1.0f;   // ед/сек — было 2.0, теперь как у овец
+        constexpr float STARVATION_LIMIT  = 30.0f;  // 30 сек на нуле = смерть (было 15)
+        constexpr float HUNGER_HUNT_TRIGGER = 65.0f; // ниже этого активно ищем жертв
+
+        // ── ДОМ СТАИ (патрулирование своей зоны) ─────────────────
+        constexpr float HOME_PATROL_RADIUS = 70.0f;
+
+        // ── КОНФЛИКТ СТАЙ ────────────────────────────────────────
+        // Когда ADULT/MEDIUM встречает волка другой стаи (другой packId),
+        // начинается бой. BABY не участвуют. Один выживает → вожак.
+        constexpr float FIGHT_TRIGGER_RADIUS = 6.0f;
+        constexpr float FIGHT_CONTACT_DIST   = 1.5f;
+        constexpr float FIGHT_DAMAGE_RATE    = 25.0f;  // hp/сек при контакте
+        constexpr float FIGHT_MAX_HEALTH     = 100.0f;
+        // Cooldown после боя, чтобы не атаковали тут же бабушку
+        constexpr float FIGHT_COOLDOWN       = 25.0f;
 
         // ── РАЗМНОЖЕНИЕ ───────────────────────────────────────────
         constexpr float MATING_HUNGER_THRESHOLD = 70.0f;

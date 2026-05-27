@@ -325,10 +325,7 @@ void World::Update(float deltaTime){
         }
     }
 
-    // ── НАСЛЕДОВАНИЕ ВОЖАКА ─────────────────────────────────────────
-    // Если ADULT-вожак умер от старости — драка между MEDIUM той же
-    // стаи, и один из них (случайный) становится новым вожаком.
-    // Визуально: облако серой «пыли драки» на месте смерти.
+    // ── НАСЛЕДОВАНИЕ ВОЖАКА (смерть ADULT-вожака от старости) ───────
     for (const auto& deadEntity : entities) {
         if (deadEntity->IsAlive()) continue;
         Wolf* deadWolf = dynamic_cast<Wolf*>(deadEntity.get());
@@ -337,11 +334,9 @@ void World::Update(float deltaTime){
         int pid = deadWolf->GetPackId();
         Vector3 deathPos = deadWolf->GetPosition();
 
-        // Партиклы драки
         SpawnParticles(deathPos, (Color){180, 180, 180, 255}, 22, false);
         SpawnParticles(deathPos, (Color){120, 100, 90, 255}, 15, false);
 
-        // Собираем MEDIUM той же стаи
         std::vector<Wolf*> candidates;
         for (const auto& e : entities) {
             if (!e->IsAlive()) continue;
@@ -354,11 +349,65 @@ void World::Update(float deltaTime){
         if (!candidates.empty()) {
             int idx = GetRandomValue(0, (int)candidates.size() - 1);
             candidates[idx]->PromoteToLeader();
-            // Эффектный «победный» взрыв на новом вожаке
             SpawnParticles(candidates[idx]->GetPosition(),
                            (Color){200, 60, 60, 255}, 12, false);
         }
-        // Если MEDIUM нет — стая без вожака, до пока BABY не дорастёт
+    }
+
+    // ── МЕРЖ СТАИ ПОСЛЕ КОНФЛИКТА ──────────────────────────────────
+    // Только для волков, погибших в БОЮ (diedInFight=true).
+    // BABY и MEDIUM проигравшей стаи переходят к стае победителя.
+    for (const auto& deadEntity : entities) {
+        if (deadEntity->IsAlive()) continue;
+        Wolf* deadWolf = dynamic_cast<Wolf*>(deadEntity.get());
+        if (!deadWolf) continue;
+        if (!deadWolf->DiedInFight()) continue;
+
+        int losingPack = deadWolf->GetPackId();
+        Vector3 deathPos = deadWolf->GetPosition();
+
+        // Ищем ближайшего ЖИВОГО волка другой стаи (= победитель)
+        Wolf* winner = nullptr;
+        float bestD = 25.0f; // в зоне мест боя
+        for (const auto& e : entities) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (!w || w->GetPackId() == losingPack) continue;
+            float d = Vector3Distance(deathPos, w->GetPosition());
+            if (d < bestD) { bestD = d; winner = w; }
+        }
+        if (!winner) continue;
+
+        // Победитель должен быть ADULT — если MEDIUM, промокируем
+        if (winner->GetAgeStage() == Config::Wolf::AgeStage::MEDIUM) {
+            // Промокируем только если у стаи нет вожака сейчас
+            bool hasLeader = false;
+            for (const auto& e : entities) {
+                if (!e->IsAlive()) continue;
+                Wolf* w = dynamic_cast<Wolf*>(e.get());
+                if (w && w->GetPackId() == winner->GetPackId()
+                    && w->GetAgeStage() == Config::Wolf::AgeStage::ADULT) {
+                    hasLeader = true; break;
+                }
+            }
+            if (!hasLeader) winner->PromoteToLeader();
+        }
+
+        int winnerPack = winner->GetPackId();
+
+        // Переводим всех BABY (и оставшихся выживших) проигравшей стаи
+        // в стаю победителя. Меняем им packId и homePos.
+        Vector3 winnerHome = winner->GetHomePos();
+        for (const auto& e : entities) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (w && w->GetPackId() == losingPack) {
+                w->SetPackId(winnerPack);
+                w->SetHomePos(winnerHome);
+            }
+        }
+
+        SpawnParticles(deathPos, (Color){200, 200, 200, 255}, 10, false);
     }
 
     entities.erase(
