@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "CameraSpawn.hpp"
 #include <cmath>
 #include <cstdlib>

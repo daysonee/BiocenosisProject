@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #pragma once
 
 #include "../core/entity.hpp"

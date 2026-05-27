@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "sheep.hpp"
 #include "wolf.hpp"
 #include "plant.hpp"

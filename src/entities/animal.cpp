@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "animal.hpp"
 #include "raymath.h"
 #include "../core/world.hpp"

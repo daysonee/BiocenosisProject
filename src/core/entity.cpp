@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "entity.hpp"
 
 Entity::Entity(Vector3 startPosition){

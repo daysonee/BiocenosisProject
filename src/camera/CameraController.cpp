@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "CameraController.hpp"
 #include <cmath>
 
@@ -55,7 +56,7 @@ void CameraController::UpdateTargetFromInput(float deltaTime) {
     if (IsKeyDown(KEY_W)) { moveX += forwardX; moveZ += forwardZ; }
     if (IsKeyDown(KEY_S)) { moveX -= forwardX; moveZ -= forwardZ; }
     if (IsKeyDown(KEY_D)) { moveX -= rightX; moveZ -= rightZ; }
-    if (IsKeyDown(KEY_A)) { moveX += rightX; moveZ += rightZ; }
+        if (IsKeyDown(KEY_A)) { moveX += rightX; moveZ += rightZ; }
 
     // ========== ВЕРТИКАЛЬНОЕ ДВИЖЕНИЕ ==========
     if (IsKeyDown(KEY_Q) || IsKeyDown(KEY_SPACE)) { moveY += 1.0f; }     // Q или Пробел - вверх

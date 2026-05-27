@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "wolf.hpp"
 #include "sheep.hpp"
 #include "../core/world.hpp"

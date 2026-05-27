@@ -85,7 +85,7 @@ public:
 
     void Update(float deltaTime);
     void Draw();
-
+    int GetGrassCount() const;
     const std::vector<Vector3>& GetTreePositions() const { return treePositions; }
     const std::vector<std::unique_ptr<Entity>>& GetEntities() const { return entities; }
 };

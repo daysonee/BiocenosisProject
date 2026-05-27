@@ -1,4 +1,6 @@
+#pragma warning(disable: 4576)
 #include "plant.hpp"
+
 
 Plant::Plant(Vector3 startPosition) : Entity(startPosition){
 
