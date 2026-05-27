@@ -6,7 +6,7 @@ class Wolf;
 
 enum class HunterState {
     RESTING,    
-    HUNTING,    
+    WANDERING,   // Идет в лес и ищет волков 
     CHASING,    
     RETURNING 
 };
@@ -20,6 +20,11 @@ private:
 
     float stateTimer;
     float shootCooldown;
+    float recoilTimer;
+    
+    // Новые переменные для визуала
+    float facingAngle; // Запоминает угол поворота, чтобы не сбрасываться на 0
+    float smokeTimer;  // Таймер для дыма из трубы
 
     void MoveTowards(Vector3 target, float speed, float deltaTime, World* world);
     Wolf* FindNearestWolf(World* world);

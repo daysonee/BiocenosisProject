@@ -232,8 +232,33 @@ namespace Config {
         constexpr float SPEED_RUN      = 5.0f;
         constexpr float VISION_RADIUS  = 25.0f; 
         constexpr float SHOOT_RANGE    = 12.0f; 
-        constexpr float SHOOT_COOLDOWN = 4.0f;  
+        constexpr float SHOOT_COOLDOWN = 1.0f;  
         constexpr float REST_DURATION  = 20.0f; 
         constexpr float HUNT_TIMEOUT   = 40.0f; 
+    }
+
+        namespace Crab {
+        constexpr int   INITIAL_COUNT       = 30;
+ 
+        constexpr float SPEED_WALK          = 1.5f;
+        constexpr float WANDER_RADIUS       = 25.0f;
+ 
+        // Поедание трупа
+        constexpr float EAT_RADIUS          = 2.0f;    // дистанция для поедания
+        constexpr float EAT_RATE            = 8.0f;    // единиц питания/сек (каждый краб)
+        constexpr float HUNGER_MAX          = 100.0f;
+        constexpr float HUNGER_DECAY        = 0.5f;    // ед/сек
+        constexpr float HUNGER_EAT_TRIGGER  = 60.0f;   // при каком уровне голода ищет еду
+ 
+        // Возраст
+        constexpr float LIFESPAN_MIN        = 120.0f;  // 2 минуты
+        constexpr float LIFESPAN_MAX        = 200.0f;  // ~3.3 минуты
+ 
+        // Размножение
+        constexpr float MATING_HUNGER_THRESHOLD = 80.0f;  // нужно наесться
+        constexpr float MATING_COOLDOWN         = 40.0f;
+        constexpr float MATING_PROCESS_TIME     = 3.0f;
+        constexpr float MATING_APPROACH_DIST    = 1.5f;
+        constexpr float SPAWN_OFFSET_RADIUS     = 2.0f;
     }
 }
