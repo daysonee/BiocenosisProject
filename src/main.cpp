@@ -11,58 +11,71 @@
 #include "camera/CameraController.hpp"
 #include "ui/EcoStatsDisplay.hpp"
 #include "entities/crab.hpp"
+#include "entities/hunter.hpp"
 #include "ui/MainMenu.hpp"
 #include <memory>
 #include <cmath>
 
-// СПАВН ВОЛКОВ СТАЯМИ В ЛЕСУ (между SAND_LEVEL и BIOME_THRESHOLD)
-// Каждая стая: 1 ADULT-вожак + 1-2 MEDIUM + 0-1 BABY, общий packId
-void SpawnWolfPacksInForest(World& world) {
+// СПАВН ВОЛКОВ СТАЯМИ В ЛЕСУ
+void SpawnWolfPacksInForest(World& world, const MenuSettings& settings) {
     const int halfMap = Config::World::MAP_SIZE / 2;
-    const int totalPacks = Config::Wolf::PACK_COUNT;
-    int packsSpawned = 0;
+    
+    // Вместо фиксированных стай считаем, сколько волков НАДО спавнить всего
+    int wolvesToSpawn = settings.wolfCount; 
+    int wolvesSpawned = 0;
 
     const float FOREST_MIN = Config::World::SAND_LEVEL;
     const float FOREST_MAX = Config::World::BIOME_THRESHOLD;
 
-    const int maxAttempts = 3000;
-    for (int attempt = 0; attempt < maxAttempts && packsSpawned < totalPacks; ++attempt) {
-        float cx = (float)GetRandomValue(-halfMap, halfMap);
-        float cz = (float)GetRandomValue(-halfMap, halfMap);
-        float cy = world.GetHeight(cx, cz);
+    int currentPackId = 1;
+    const int maxAttempts = 5000;
 
-        if (cy <= FOREST_MIN || cy > FOREST_MAX) continue;
+    for (int attempt = 0; attempt < maxAttempts && wolvesSpawned < wolvesToSpawn; ++attempt) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float height = world.GetHeight(rx, rz);
 
-        const int packSize = GetRandomValue(Config::Wolf::PACK_SIZE_MIN,
-                                            Config::Wolf::PACK_SIZE_MAX);
-        const int packId = packsSpawned;
+        if (height >= FOREST_MIN && height <= FOREST_MAX) {
+            // Определяем, сколько волков заспавнить в текущую стаю (например, от 3 до 4, но не больше, чем осталось)
+            int remainingWolves = wolvesToSpawn - wolvesSpawned;
+            int packSize = GetRandomValue(Config::Wolf::PACK_SIZE_MIN, Config::Wolf::PACK_SIZE_MAX);
+            if (packSize > remainingWolves) packSize = remainingWolves;
 
-        // Структура: первый — ADULT-вожак, далее MEDIUM, последние могут быть BABY
-        for (int i = 0; i < packSize; ++i) {
-            float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
-            float radius = (float)GetRandomValue(5, (int)(Config::Wolf::PACK_RADIUS * 10)) / 10.0f;
+            Vector3 packCenter = { rx, height, rz };
 
-            float wx = cx + cosf(angle) * radius;
-            float wz = cz + sinf(angle) * radius;
-            if (wx < -halfMap || wx > halfMap || wz < -halfMap || wz > halfMap) continue;
-            float wy = world.GetHeight(wx, wz);
-            if (wy <= Config::World::WATER_LEVEL) continue;
+            // Спавним членов стаи вокруг центра
+            for (int i = 0; i < packSize; ++i) {
+                float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+                float radius = (float)GetRandomValue(0, (int)(Config::Wolf::PACK_RADIUS * 10)) / 10.0f;
 
-            Config::Wolf::AgeStage age;
-            if (i == 0) {
-                age = Config::Wolf::AgeStage::ADULT;
-            } else if (i == packSize - 1 && packSize >= 3 && GetRandomValue(0, 1) == 0) {
-                age = Config::Wolf::AgeStage::BABY;
-            } else {
-                age = Config::Wolf::AgeStage::MEDIUM;
+                Vector3 spawnPos = {
+                    packCenter.x + cosf(angle) * radius,
+                    0.0f,
+                    packCenter.z + sinf(angle) * radius
+                };
+                spawnPos.y = world.GetHeight(spawnPos.x, spawnPos.z);
+
+                // Первый волк в стае будет вожаком (ADULT), остальные — MEDIUM или BABY
+                Config::Wolf::AgeStage stage = Config::Wolf::AgeStage::MEDIUM;
+                if (i == 0) {
+                    stage = Config::Wolf::AgeStage::ADULT;
+                } else if (GetRandomValue(0, 100) < 25) { // 25% шанс на ребенка
+                    stage = Config::Wolf::AgeStage::BABY;
+                }
+
+                auto wolf = std::make_unique<Wolf>(spawnPos, stage, currentPackId);
+                wolf->SetHomePos(packCenter);
+                
+                if (i == 0) {
+                    wolf->PromoteToLeader();
+                }
+
+                world.QueueEntity(std::move(wolf));
+                wolvesSpawned++;
             }
-
-            auto wolf = std::make_unique<Wolf>((Vector3){ wx, wy, wz }, age, packId);
-            wolf->SetHomePos((Vector3){ cx, cy, cz });  // общий центр стаи
-            if (i == 0) wolf->PromoteToLeader();
-            world.AddEntity(std::move(wolf));
+            
+            currentPackId++; // Переходим к следующей стае
         }
-        ++packsSpawned;
     }
 }
 
@@ -157,6 +170,33 @@ void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
         if (ry >= Config::World::WATER_LEVEL && ry <= Config::World::SAND_LEVEL) {
             world.AddEntity(std::make_unique<Crab>((Vector3) { rx, ry, rz }));
             spawned++;
+        }
+    }
+}
+
+// СПАВН ОХОТНИКА (1 шт) на холме в лесной зоне
+void SpawnHunter(World& world) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    // Ищем точку: лес (между SAND и BIOME), не очень близко к центру
+    for (int i = 0; i < 2000; ++i) {
+        float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+        float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+        float ry = world.GetHeight(rx, rz);
+        if (ry > Config::World::SAND_LEVEL + 2.0f
+            && ry < Config::World::BIOME_THRESHOLD)
+        {
+            world.AddEntity(std::make_unique<Hunter>((Vector3){ rx, ry, rz }));
+            return;
+        }
+    }
+    // Fallback: где попало на суше
+    for (int i = 0; i < 1000; ++i) {
+        float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+        float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+        float ry = world.GetHeight(rx, rz);
+        if (ry > Config::World::WATER_LEVEL + 2.0f) {
+            world.AddEntity(std::make_unique<Hunter>((Vector3){ rx, ry, rz }));
+            return;
         }
     }
 }
@@ -283,9 +323,14 @@ int main() {
 
     World* myWorld = new World();
 
-    SpawnWolves(*myWorld, menuSettings.wolfCount);
+    // Стаями в лесу (по умолчанию ровно PACK_COUNT стай × 3-4 волка)
+    SpawnWolfPacksInForest(*myWorld, menuSettings);
     SpawnSheepSmartAndLogical(*myWorld, menuSettings.sheepCount);
     SpawnCrabsOnBeaches(*myWorld, 50);
+    SpawnHunter(*myWorld);
+
+    Vector3 hutPos = myWorld->GetHunterHutPosition(); 
+    myWorld->QueueEntity(std::make_unique<Hunter>(hutPos));
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -388,9 +433,10 @@ int main() {
                 // СОЗДАЁМ НОВЫЙ МИР
                 World* newWorld = new World();
 
-                SpawnWolves(*newWorld, menuSettings.wolfCount);
+                SpawnWolfPacksInForest(*newWorld, menuSettings);
                 SpawnSheepSmartAndLogical(*newWorld, menuSettings.sheepCount);
                 SpawnCrabsOnBeaches(*newWorld, 50);
+                SpawnHunter(*newWorld);
 
                 delete myWorld;
                 myWorld = newWorld;
@@ -587,7 +633,7 @@ int main() {
         if (isRegenerating) {
             DrawRectangle(0, 0, screenWidth, screenHeight, (Color) { 0, 0, 0, 180 });
 
-            Rectangle dialogBox = { screenWidth / 2 - 200, screenHeight / 2 - 75, 400, 150 };
+            Rectangle dialogBox = { screenWidth / 2.0 - 200.0, screenHeight / 2 - 75, 400, 150 };
             DrawRectangleRec(dialogBox, (Color) { 50, 50, 70, 255 });
             DrawRectangleLinesEx(dialogBox, 3, YELLOW);
 

@@ -74,6 +74,9 @@ private:
 
     Vector3 hunterHutPosition;
 public:
+
+    Vector3 GetHunterHutPosition() const { return hunterHutPosition; }
+    
     World();
     ~World();
 

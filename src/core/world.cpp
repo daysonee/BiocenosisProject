@@ -115,6 +115,46 @@ World::World(){
                Config::Grass::COASTAL_MIN, Config::Grass::COASTAL_MAX,
                Config::Grass::Type::COASTAL);
 
+
+    // ─── ГАРАНТИРОВАННЫЙ СПАВН ДОМИКА (ГОРЫ -> ЛЕС) ───
+    bool hutSpawned = false;
+    // Убрали "const int", так как halfMap уже объявлен в начале конструктора!
+
+    // Попытка 1: Ищем высокое место в горах (выше BIOME_THRESHOLD)
+    for (int attempts = 0; attempts < 1500; ++attempts) {
+        float rx = (float)GetRandomValue(-halfMap + 60, halfMap - 60); 
+        float rz = (float)GetRandomValue(-halfMap + 60, halfMap - 60);
+        float h = GetHeight(rx, rz);
+
+        if (h > Config::World::BIOME_THRESHOLD) {
+            hunterHutPosition = { rx, h, rz };
+            hutSpawned = true;
+            break;
+        }
+    }
+
+    // Попытка 2 (Фоллбэк): Если гор на карте вообще нет, спавним в лесу
+    if (!hutSpawned) {
+        for (int attempts = 0; attempts < 1500; ++attempts) {
+            float rx = (float)GetRandomValue(-halfMap + 60, halfMap - 60);
+            float rz = (float)GetRandomValue(-halfMap + 60, halfMap - 60);
+            float h = GetHeight(rx, rz);
+
+            if (h >= Config::World::SAND_LEVEL + 1.0f && h <= Config::World::BIOME_THRESHOLD) {
+                hunterHutPosition = { rx, h, rz };
+                hutSpawned = true;
+                break;
+            }
+        }
+    }
+
+    // Попытка 3 (Аварийная)
+    if (!hutSpawned) {
+        hunterHutPosition = { 0.0f, GetHeight(0.0f, 0.0f), 0.0f };
+    }
+    // ──────────────────────────────────────────────────
+    
+
     int maxRainDrops = Config::World::RAINDROPS_COUNT; 
     for (int i = 0; i < maxRainDrops; i++) {
         rainDrops.push_back({
@@ -462,6 +502,22 @@ void World::Update(float deltaTime){
         entities.end()
     );
 
+    float currentWaterLvl = GetCurrentWaterLevel();
+
+    for (size_t i = 0; i < grassPatches.size(); ++i) {
+        // Если трава ещё жива, но её высота оказалась ниже или равна уровню воды
+        if (grassPatches[i].alive && grassPatches[i].position.y <= currentWaterLvl) {
+            grassPatches[i].alive = false;
+
+            // Добавим красивый визуальный эффект: всплеск воды (синие партиклы) вместо травы!
+            Vector3 splashPos = grassPatches[i].position;
+            splashPos.y = currentWaterLvl + 0.1f; // Чуть выше уровня воды для видимости
+            
+            // Спавним 4 сине-голубых партикла всплеска
+            SpawnParticles(splashPos, Color{ 60, 130, 220, 255 }, 4, false);
+        }
+    }
+
     for (auto& e : pendingEntities) entities.push_back(std::move(e));
     pendingEntities.clear();
 
@@ -551,6 +607,18 @@ void World::Draw(){
             DrawCubeWires(p.position, s, s, s, strokeColor);
         }
     }
+    // ─── ОТРИСОВКА ДОМИКА ОХОТНИКА ───
+    // База домика (коричневый куб 4x4x4)
+    Vector3 houseCenter = hunterHutPosition;
+    houseCenter.y += 2.0f; // Приподнимаем, чтобы куб стоял НА земле, а не наполовину под ней
+    DrawCube(houseCenter, 4.0f, 4.0f, 4.0f, BROWN);
+    DrawCubeWires(houseCenter, 4.0f, 4.0f, 4.0f, DARKBROWN);
+
+    // Крыша домика (бордовый куб поменьше чуть выше основания)
+    Vector3 roofPos = hunterHutPosition;
+    roofPos.y += 4.0f;
+    DrawCube((Vector3){roofPos.x, roofPos.y + 1.0f, roofPos.z}, 4.5f, 2.0f, 4.5f, MAROON);
+    DrawCubeWires((Vector3){roofPos.x, roofPos.y + 1.0f, roofPos.z}, 4.5f, 2.0f, 4.5f, BLACK);
 }
 
 
@@ -670,7 +738,7 @@ float World::EatGrass(int index) {
     }
     return 0.0f;
 }
-// ── Draw2D: охотник рисует свой тег через этот метод ──────────────────
+// ── Draw2D: охотник рисует свой тег через этот метод 
 void World::Draw2D(Camera camera) {
     // Пока пуст — hunter.Draw2D вызывается из main или draw
 }

@@ -83,11 +83,14 @@ void MainMenu::Update() {
     decHover = CheckCollisionPointRec(mousePos, wolfBtnDec);
     incHover = CheckCollisionPointRec(mousePos, wolfBtnInc);
 
-    if (leftClicked && decHover && settings.wolfCount > WOLF_MIN) {
-        settings.wolfCount--;
+    if (CheckCollisionPointRec(mousePos, wolfBtnDec) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        settings.wolfCount -= 3;  
+        if (settings.wolfCount < WOLF_MIN) settings.wolfCount = WOLF_MIN;
     }
-    if (leftClicked && incHover && settings.wolfCount < WOLF_MAX) {
-        settings.wolfCount++;
+
+    if (CheckCollisionPointRec(mousePos, wolfBtnInc) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        settings.wolfCount += 3; 
+        if (settings.wolfCount > WOLF_MAX) settings.wolfCount = WOLF_MAX;
     }
 
     // Трава

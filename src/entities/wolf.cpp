@@ -627,6 +627,34 @@ void Wolf::UpdateFight(float dt, World* world) {
 void Wolf::Update(float deltaTime, World* world) {
     if (!IsAlive()) return;
 
+    // ─── БЛОК ЗАЩИТЫ ОТ ЗАСТРЕВАНИЯ (ИСПРАВЛЕННЫЙ) ───
+    stuckCheckTimer += deltaTime;
+    if (stuckCheckTimer >= 1.0f) { 
+        stuckCheckTimer = 0.0f;
+        // У волка активное движение происходит в состояниях WANDERING и HUNGRY
+        if (state == AnimalState::WANDERING || state == AnimalState::HUNGRY) 
+        {
+            if (Vector3Distance(position, posAtLastCheck) < 0.3f) {
+                stuckCount++;
+            } else {
+                stuckCount = 0; 
+            }
+        }
+        posAtLastCheck = position;
+    }
+
+    if (stuckCount >= 3) {
+        stuckCount = 0;
+        const int halfMap = Config::World::MAP_SIZE / 2;
+        float rx = (float)GetRandomValue(-halfMap + 100, halfMap - 100);
+        float rz = (float)GetRandomValue(-halfMap + 100, halfMap - 100);
+        targetPosition = { rx, world->GetHeight(rx, rz), rz };
+        
+        targetPrey = nullptr; 
+        state = AnimalState::WANDERING; 
+        wanderTargetTimer = 10.0f;
+    }
+
     // 1. Возраст
     UpdateAge(deltaTime, world);
     if (!IsAlive()) return;
@@ -750,7 +778,35 @@ void Wolf::Update(float deltaTime, World* world) {
     // 12. State machine
     switch (state) {
         case AnimalState::IDLE:     UpdateIdle(deltaTime, world);   break;
-        case AnimalState::WANDERING:UpdateWander(deltaTime, world); break;
+        case AnimalState::WANDERING: {
+            wanderTargetTimer -= deltaTime;
+            
+            float distToTarget = Vector3Distance(position, targetPosition);
+            if (distToTarget < 2.0f || wanderTargetTimer <= 0.0f) {
+                const int halfMap = Config::World::MAP_SIZE / 2;
+                
+                // 70% шанс уйти в глубокий поиск по миру, 30% — покрутиться у дома
+                if (GetRandomValue(0, 100) < 70) {
+                    float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+                    float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
+                    targetPosition = { rx, world->GetHeight(rx, rz), rz };
+                } else {
+                    float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+                    float radius = (float)GetRandomValue(20, 100); 
+                    float tx = homePos.x + cosf(angle) * radius;
+                    float tz = homePos.z + sinf(angle) * radius;
+                    tx = Clamp(tx, (float)-halfMap + 10, (float)halfMap - 10);
+                    tz = Clamp(tz, (float)-halfMap + 10, (float)halfMap - 10);
+                    targetPosition = { tx, world->GetHeight(tx, tz), tz };
+                }
+                
+                wanderTargetTimer = (float)GetRandomValue(8, 15);
+            }
+
+            MoveTowardsTarget(deltaTime, world);
+            // ────────────────────────────────────────────────────────
+            break;
+        }
         case AnimalState::HUNGRY:   UpdateHunt(deltaTime, world);   break;
         case AnimalState::FIGHTING: UpdateFight(deltaTime, world);  break;
         case AnimalState::FLEEING:  state = AnimalState::WANDERING; break;

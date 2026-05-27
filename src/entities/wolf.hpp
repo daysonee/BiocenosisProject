@@ -89,6 +89,11 @@ private:
     float FullCooldown() const;
     float CurrentHuntingRadius() const;
 
+    float   stuckCheckTimer  = 0.0f;
+    Vector3 posAtLastCheck   = { 0.0f, 0.0f, 0.0f };
+    int     stuckCount       = 0;
+    float   wanderTargetTimer = 0.0f;
+
 public:
     bool isMating = false;
 

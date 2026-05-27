@@ -23,7 +23,7 @@ private:
     const int SHEEP_MIN = 0;
     const int SHEEP_MAX = 500;
     const int WOLF_MIN = 0;
-    const int WOLF_MAX = 20;
+    const int WOLF_MAX = 100;
     const int GRASS_MIN = 100;
     const int GRASS_MAX = 5000;
 
