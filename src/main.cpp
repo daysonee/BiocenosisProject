@@ -326,11 +326,11 @@ int main() {
     // Стаями в лесу (по умолчанию ровно PACK_COUNT стай × 3-4 волка)
     SpawnWolfPacksInForest(*myWorld, menuSettings);
     SpawnSheepSmartAndLogical(*myWorld, menuSettings.sheepCount);
-    SpawnCrabsOnBeaches(*myWorld, 50);
-    SpawnHunter(*myWorld);
+    SpawnCrabsOnBeaches(*myWorld, Config::Crab::INITIAL_COUNT);
 
-    Vector3 hutPos = myWorld->GetHunterHutPosition(); 
-    myWorld->QueueEntity(std::make_unique<Hunter>(hutPos));
+    // Охотник живёт в своей хижине. Спавним ровно ОДНОГО, в точке хижины.
+    Vector3 hutPos = myWorld->GetHunterHutPosition();
+    myWorld->AddEntity(std::make_unique<Hunter>(hutPos));
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -435,8 +435,12 @@ int main() {
 
                 SpawnWolfPacksInForest(*newWorld, menuSettings);
                 SpawnSheepSmartAndLogical(*newWorld, menuSettings.sheepCount);
-                SpawnCrabsOnBeaches(*newWorld, 50);
-                SpawnHunter(*newWorld);
+                SpawnCrabsOnBeaches(*newWorld, Config::Crab::INITIAL_COUNT);
+                // ОДИН охотник, ровно в точке хижины нового мира
+                {
+                    Vector3 newHut = newWorld->GetHunterHutPosition();
+                    newWorld->AddEntity(std::make_unique<Hunter>(newHut));
+                }
 
                 delete myWorld;
                 myWorld = newWorld;

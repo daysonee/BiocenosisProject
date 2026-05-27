@@ -13,7 +13,6 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     shootCooldown = 0.0f;
     facingAngle = 0.0f;
     smokeTimer = 0.0f;
-    recoilTimer = 0.0f;
 }
 
 Wolf* Hunter::FindNearestWolf(World* world) {
@@ -40,77 +39,45 @@ void Hunter::MoveTowards(Vector3 target, float speed, float deltaTime, World* wo
     float distance = Vector3Length(direction);
     
     if (distance > 0.1f) {
+        // Обновляем угол поворота только если мы двигаемся
         facingAngle = atan2f(direction.x, direction.z) * RAD2DEG;
 
         Vector3 normDir = Vector3Normalize(direction);
-        float stepDist = speed * deltaTime;
-        if (stepDist > distance) stepDist = distance;
+        float step = speed * deltaTime;
+        if (step > distance) step = distance;
 
-        float dx = normDir.x * stepDist;
-        float dz = normDir.z * stepDist;
+        float nx = position.x + normDir.x * step;
+        float nz = position.z + normDir.z * step;
 
-        bool moved = false;
-
-        // --- Попытка 1: полный шаг ---
-        float nx = position.x + dx;
-        float nz = position.z + dz;
         if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
             position.x = nx;
             position.z = nz;
-            moved = true;
-        }
-
-        // --- Попытка 2: скольжение по X ---
-        if (!moved && fabsf(dx) > 0.001f) {
-            nx = position.x + dx;
-            if (world->GetHeight(nx, position.z) > world->GetCurrentWaterLevel()) {
-                position.x = nx;
-                moved = true;
-            }
-        }
-
-        // --- Попытка 3: скольжение по Z ---
-        if (!moved && fabsf(dz) > 0.001f) {
-            nz = position.z + dz;
-            if (world->GetHeight(position.x, nz) > world->GetCurrentWaterLevel()) {
-                position.z = nz;
-                moved = true;
-            }
-        }
-
-        // === ФИЗИКА ДЕРЕВЬЕВ ===
-        if (moved && world != nullptr) {
-            // Увеличенный радиус 0.6f, чтобы Железин не проваливался в меши деревьев
-            position = world->ResolveTreeCollisions(position, 0.6f); 
         }
     }
-    
     position.y = world->GetHeight(position.x, position.z);
 }
 
 void Hunter::Update(float deltaTime, World* world) {
     if (shootCooldown > 0.0f) shootCooldown -= deltaTime;
-    if (recoilTimer > 0.0f) recoilTimer -= deltaTime; // Списываем время прицеливания
 
-    // === 1. РЕФЛЕКСЫ ОХОТНИКА ===
+    // === 1. РЕФЛЕКСЫ ОХОТНИКА (Глобальная проверка) ===
+    // Если Железин не спит в хижине, он всегда сканирует местность
     if (state != HunterState::RESTING) {
         Wolf* nearest = FindNearestWolf(world);
         
         if (nearest) {
             float dist = Vector3Distance(position, nearest->GetPosition());
             
+            // Если волк в зоне поражения и ружье заряжено — стреляем рефлекторно из любого состояния!
             if (dist <= Config::Hunter::SHOOT_RANGE && shootCooldown <= 0.0f) {
-                // ПОВОРОТ К ЦЕЛИ
-                Vector3 wolfPos = nearest->GetPosition();
-                facingAngle = atan2f(wolfPos.x - position.x, wolfPos.z - position.z) * RAD2DEG;
-
                 nearest->Die();
                 
-                world->SpawnParticles(wolfPos, MAROON, 15, false);
+                // Партиклы выстрела и крови
+                world->SpawnParticles(nearest->GetPosition(), MAROON, 15, false);
                 
                 Vector3 gunMuzzle = position;
                 gunMuzzle.y += 1.1f; 
-                Vector3 dirToWolf = Vector3Normalize(Vector3Subtract(wolfPos, position));
+                Vector3 dirToWolf = Vector3Normalize(Vector3Subtract(nearest->GetPosition(), position));
                 gunMuzzle.x += dirToWolf.x * 1.2f; 
                 gunMuzzle.z += dirToWolf.z * 1.2f;
                 
@@ -119,25 +86,24 @@ void Hunter::Update(float deltaTime, World* world) {
                 
                 shootCooldown = Config::Hunter::SHOOT_COOLDOWN;
                 
-                // Даем Железину застыть в направлении выстрела на 0.6 секунды
-                recoilTimer = 0.6f; 
-                
+                // Оцениваем обстановку после выстрела
                 Wolf* nextWolf = FindNearestWolf(world);
                 if (nextWolf) {
-                    state = HunterState::CHASING; 
+                    state = HunterState::CHASING; // Рядом еще волки - продолжаем бой
                     targetWolf = nextWolf;
                 } else {
-                    state = HunterState::RETURNING; 
+                    state = HunterState::RETURNING; // Никого нет - идем домой
                     targetWolf = nullptr;
                 }
-                
-                return; 
+                return; // Прерываем Update, чтобы в этом кадре больше не шагать
             } 
+            // Если волк далеко, но мы его видим — бросаем все дела и начинаем погоню
             else if (state != HunterState::CHASING) {
                 state = HunterState::CHASING;
                 targetWolf = nearest;
             }
         } 
+        // Если мы гнались за волком, но он скрылся из виду (убежал)
         else if (state == HunterState::CHASING) {
             state = HunterState::RETURNING;
             targetWolf = nullptr;
@@ -145,17 +111,17 @@ void Hunter::Update(float deltaTime, World* world) {
     }
 
     // === 2. ДВИЖЕНИЕ В ЗАВИСИМОСТИ ОТ СОСТОЯНИЯ ===
-    // Железин шагает и поворачивается ТОЛЬКО если не "отходит" от выстрела
-    if (recoilTimer <= 0.0f) {
-        if (state == HunterState::RESTING) {
+    switch (state) {
+        case HunterState::RESTING:
             position = hutPosition; 
             stateTimer -= deltaTime;
             smokeTimer -= deltaTime;
 
             if (smokeTimer <= 0.0f) {
-                Vector3 chimneyPos = { hutPosition.x, hutPosition.y + 5.5f, hutPosition.z };
+                // Труба находится в (hp.x + 1.0, hp.y + 5.35, hp.z) — высота над верхом трубы
+                Vector3 chimneyPos = { hutPosition.x + 1.0f, hutPosition.y + 5.5f, hutPosition.z };
                 world->SpawnParticles(chimneyPos, GRAY, 1, false);
-                smokeTimer = 0.6f; 
+                smokeTimer = 0.5f; 
             }
 
             if (stateTimer <= 0.0f) {
@@ -174,8 +140,9 @@ void Hunter::Update(float deltaTime, World* world) {
                     }
                 }
             }
-        }
-        else if (state == HunterState::WANDERING) {
+            break;
+
+        case HunterState::WANDERING:
             if (position.y <= Config::World::BIOME_THRESHOLD) {
                 stateTimer -= deltaTime;
             }
@@ -184,8 +151,10 @@ void Hunter::Update(float deltaTime, World* world) {
 
             if (stateTimer <= 0.0f) {
                 state = HunterState::RETURNING;
+                break;
             }
-            else if (Vector3Distance(position, targetPosition) < 1.0f) {
+
+            if (Vector3Distance(position, targetPosition) < 1.0f) {
                 int halfMap = Config::World::MAP_SIZE / 2;
                 for (int i = 0; i < 50; i++) {
                     float rx = (float)GetRandomValue(-halfMap, halfMap);
@@ -198,20 +167,24 @@ void Hunter::Update(float deltaTime, World* world) {
                     }
                 }
             }
-        }
-        else if (state == HunterState::CHASING) {
+            break;
+
+        case HunterState::CHASING:
+            // Логика выстрела перенесена в глобальный блок наверх, 
+            // поэтому здесь остается ТОЛЬКО бег за текущей целью!
             if (targetWolf) {
                 MoveTowards(targetWolf->GetPosition(), Config::Hunter::SPEED_RUN, deltaTime, world);
             }
-        }
-        else if (state == HunterState::RETURNING) {
+            break;
+
+        case HunterState::RETURNING:
             MoveTowards(hutPosition, Config::Hunter::SPEED_WALK, deltaTime, world);
 
             if (Vector3Distance(position, hutPosition) < 0.8f) {
                 state = HunterState::RESTING;
                 stateTimer = Config::Hunter::REST_DURATION;
             }
-        }
+            break;
     }
 }
 
@@ -263,22 +236,27 @@ void Hunter::Draw() {
     // Щетина
     DrawCube({0.0f, 1.59f, 0.02f}, 0.36f, 0.12f, 0.36f, stubbleColor);
 
-    // Кудрявые волосы 
-    DrawSphere({0.0f, 1.90f, 0.0f}, 0.16f, hairColor);       
-    DrawSphere({-0.13f, 1.87f, 0.04f}, 0.11f, hairColor);    
-    DrawSphere({0.13f, 1.87f, 0.04f}, 0.11f, hairColor);     
-    DrawSphere({0.0f, 1.83f, -0.14f}, 0.13f, hairColor);     
-    DrawSphere({-0.14f, 1.76f, -0.06f}, 0.09f, hairColor);   
-    DrawSphere({0.14f, 1.76f, -0.06f}, 0.09f, hairColor);    
-    DrawSphere({0.0f, 1.89f, 0.11f}, 0.09f, hairColor);      
-    DrawSphere({-0.09f, 1.86f, 0.12f}, 0.08f, hairColor);    
-    DrawSphere({0.10f, 1.86f, 0.12f}, 0.08f, hairColor);     
-    DrawSphere({0.1f, 1.90f, 0.3f}, 0.16f, hairColor);
-    DrawSphere({0.2f, 1.90f, 0.25f}, 0.16f, hairColor);
-    DrawSphere({0.18f, 1.90f, 0.2f}, 0.16f, hairColor);    
+    // Кудрявые волосы — плотное облако сфер, покрывающее всю голову.
+    // Залысин по бокам нет, виски и затылок плотно укрыты.
+    DrawSphere({0.0f, 1.90f, 0.0f}, 0.18f, hairColor);       // макушка
+    DrawSphere({-0.13f, 1.87f, 0.04f}, 0.13f, hairColor);    // верх-лев
+    DrawSphere({0.13f, 1.87f, 0.04f}, 0.13f, hairColor);     // верх-прав
+    DrawSphere({0.0f, 1.83f, -0.14f}, 0.14f, hairColor);     // затылок
+    // Виски: больший радиус, чтобы закрыть бок головы (раньше тут были залысины)
+    DrawSphere({-0.18f, 1.78f, 0.0f}, 0.14f, hairColor);     // левый бок
+    DrawSphere({0.18f, 1.78f, 0.0f}, 0.14f, hairColor);      // правый бок
+    DrawSphere({-0.18f, 1.78f, -0.1f}, 0.12f, hairColor);    // левый бок-зад
+    DrawSphere({0.18f, 1.78f, -0.1f}, 0.12f, hairColor);     // правый бок-зад
+    DrawSphere({-0.16f, 1.72f, 0.05f}, 0.10f, hairColor);    // нижний-лев
+    DrawSphere({0.16f, 1.72f, 0.05f}, 0.10f, hairColor);     // нижний-прав
+    // Чёлка
+    DrawSphere({0.0f, 1.89f, 0.13f}, 0.10f, hairColor);
+    DrawSphere({-0.09f, 1.86f, 0.14f}, 0.09f, hairColor);
+    DrawSphere({0.10f, 1.86f, 0.14f}, 0.09f, hairColor);
+
     // Оружие
-    DrawCube((Vector3){0.4f, 1.1f, 0.5f}, 0.08f, 0.08f, 1.3f, BLACK);       
-    DrawCube((Vector3){0.4f, 1.05f, 0.0f}, 0.1f, 0.15f, 0.4f, DARKBROWN);   
+    DrawCube((Vector3){0.35f, 1.1f, 0.5f}, 0.08f, 0.08f, 1.3f, BLACK);       
+    DrawCube((Vector3){0.35f, 1.05f, 0.0f}, 0.1f, 0.15f, 0.4f, DARKBROWN);   
 
     // Ноги
     DrawAnimatedPart({-0.2f, 0.8f, 0.0f}, {0.2f, 0.8f, 0.2f}, jeansColor, legSwingX, -waddleAngleZ);

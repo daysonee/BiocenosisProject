@@ -94,6 +94,10 @@ private:
     int     stuckCount       = 0;
     float   wanderTargetTimer = 0.0f;
 
+    // ── НАПРАВЛЕНИЕ ВЗГЛЯДА ──────────────────────────────────
+    float   facingAngle    = 0.0f;
+    Vector3 lastDrawPos    = { 0.0f, 0.0f, 0.0f };
+
 public:
     bool isMating = false;
 

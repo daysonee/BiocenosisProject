@@ -4,6 +4,7 @@
 #include "plant.hpp"
 #include "../core/world.hpp"
 #include <raymath.h>
+#include <rlgl.h>
 #include "../core/constants.hpp"
 #include <cmath>
 #include <vector>
@@ -158,6 +159,67 @@ void Sheep::Update(float deltaTime, World* world) {
             sum.y = world->GetHeight(sum.x, sum.z);
             flockCenter = sum;
         }
+    }
+
+    // ── 1.5. РЕАКЦИЯ НА ПРИЛИВ ───────────────────────────────────────────────
+    // Раз в секунду проверяем, не подбирается ли вода. Если да:
+    //   - 92% овец паникуют и бегут на сухую возвышенность
+    //   - 8% "замирают" (роковая ошибка) и в итоге тонут
+    tideCheckTimer -= deltaTime;
+    if (tideCheckTimer <= 0.0f) {
+        tideCheckTimer = 1.0f;
+        float waterLvl = world->GetCurrentWaterLevel();
+        float aboveWater = position.y - waterLvl;
+        // Опасно: либо уже почти в воде, либо рядом с поднимающейся водой
+        if (aboveWater < Config::Sheep::TIDE_DETECTION_DIST && aboveWater > -0.1f) {
+            if (!tideEvalDone) {
+                tideEvalDone = true;
+                // Однократный жребий: замираем или паникуем
+                float roll = (float)GetRandomValue(0, 9999) / 10000.0f;
+                if (roll < Config::Sheep::TIDE_FREEZE_CHANCE) {
+                    tideFrozen = true;
+                }
+            }
+            if (!tideFrozen) {
+                // Паника: ищем самую высокую точку в радиусе 25
+                Vector3 bestEscape = position;
+                float bestHeight = position.y;
+                for (int i = 0; i < 12; ++i) {
+                    float a = (float)GetRandomValue(0, 360) * DEG2RAD;
+                    float r = (float)GetRandomValue(8, 25);
+                    float tx = position.x + cosf(a) * r;
+                    float tz = position.z + sinf(a) * r;
+                    float ty = world->GetHeight(tx, tz);
+                    if (ty > bestHeight && ty > waterLvl + 2.0f) {
+                        bestHeight = ty;
+                        bestEscape = { tx, ty, tz };
+                    }
+                }
+                if (bestHeight > position.y + 0.5f) {
+                    targetPosition = bestEscape;
+                    state          = AnimalState::WANDERING;
+                    speed          = myRunSpeed; // бежим в панике
+                }
+            }
+        } else if (aboveWater > Config::Sheep::TIDE_DETECTION_DIST + 2.0f) {
+            // Угроза миновала
+            tideEvalDone = false;
+            tideFrozen   = false;
+        }
+    }
+
+    // Замёрзшая овца тонет на месте — ничего не делает
+    if (tideFrozen) {
+        if (position.y <= world->GetCurrentWaterLevel()) {
+            health -= 25.0f * deltaTime;
+            if (health <= 0.0f) {
+                Die();
+                return;
+            }
+        }
+        // Снап к рельефу и выход (не двигаемся, не финтим)
+        position.y = world->GetHeight(position.x, position.z);
+        return;
     }
 
     // ── 2. ВОЗРАСТ ───────────────────────────────────────────────────────────
@@ -620,6 +682,18 @@ void Sheep::Update(float deltaTime, World* world) {
     } else {
         if (health < 100.0f) health = fminf(health + 5.0f * deltaTime, 100.0f);
     }
+
+    // ── 9. НАПРАВЛЕНИЕ ВЗГЛЯДА (поворот модели в Draw) ───────────────────────
+    Vector3 movedDelta = {
+        position.x - lastPosition.x, 0.0f,
+        position.z - lastPosition.z
+    };
+    float movedDist = Vector3Length(movedDelta);
+    // Обновляем угол только если действительно двигались (не дрожание)
+    if (movedDist > 0.02f) {
+        facingAngle = atan2f(movedDelta.x, movedDelta.z) * RAD2DEG;
+    }
+    lastPosition = position;
 }
 
 // ─── Draw ─────────────────────────────────────────────────────────────────────
@@ -647,7 +721,15 @@ void Sheep::Draw() {
         }
     }
 
-    DrawCube(position, 1.2f * scale, 1.2f * scale, 1.2f * scale, bodyColor);
-    Vector3 headPos = { position.x + 0.6f * scale, position.y + 0.2f * scale, position.z };
-    DrawCube(headPos, 0.4f * scale, 0.4f * scale, 0.4f * scale, BLACK);
+    // Поворот в направлении движения — голова смотрит куда бежим
+    rlPushMatrix();
+    rlTranslatef(position.x, position.y, position.z);
+    rlRotatef(facingAngle, 0.0f, 1.0f, 0.0f);
+
+    DrawCube({0.0f, 0.0f, 0.0f}, 1.2f * scale, 1.2f * scale, 1.2f * scale, bodyColor);
+    // Голова теперь спереди (по локальной оси +Z)
+    DrawCube({0.0f, 0.2f * scale, 0.6f * scale},
+             0.4f * scale, 0.4f * scale, 0.4f * scale, BLACK);
+
+    rlPopMatrix();
 }

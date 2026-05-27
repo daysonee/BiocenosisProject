@@ -46,6 +46,7 @@ private:
         Vector3            position;
         Config::Grass::Type type;
         bool               alive;
+        float              regrowTimer = 0.0f;  // секунд до возрождения после поедания
     };
     std::vector<GrassPatch> grassPatches;
 

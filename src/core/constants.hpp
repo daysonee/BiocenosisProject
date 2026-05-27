@@ -8,10 +8,12 @@ namespace Config {
         constexpr int   MAP_SIZE        = 1000;
         constexpr float MESH_DENSITY    = 1;     
         constexpr float PLANT_SPAWN_DELAY   = 1.5f;
-        constexpr float WEATHER_SUNNY_MIN   = 10.0f;
-        constexpr float WEATHER_SUNNY_MAX   = 15.0f;
-        constexpr float WEATHER_RAIN_MIN    = 10.0f;
-        constexpr float WEATHER_RAIN_MAX    = 15.0f;
+        // Между дождями — долгий период (берег успевает полностью обсохнуть)
+        constexpr float WEATHER_SUNNY_MIN   = 60.0f;
+        constexpr float WEATHER_SUNNY_MAX   = 90.0f;
+        // Дождь короче — прилив не успевает накопиться
+        constexpr float WEATHER_RAIN_MIN    = 25.0f;
+        constexpr float WEATHER_RAIN_MAX    = 40.0f;
 
         // ФРАКТАЛЬНЫЙ ШУМ
         constexpr float PERLIN_SCALE     = 0.0025f; 
@@ -31,16 +33,23 @@ namespace Config {
         constexpr int   BUSH_COUNT      = 1000; // (legacy, не используется)
 
         // ── ПРИЛИВЫ ──────────────────────────────────────────────
-        constexpr float TIDE_RISE_AMOUNT   = 5.0f;   // на сколько повышается уровень
-        constexpr float TIDE_RISE_DURATION = 30.0f;  // ramp up за 30 сек
-        constexpr float TIDE_FALL_DURATION = 60.0f;  // ramp down за 60 сек
+        // Вода поднимается всего на 2 блока — пляж (23) ещё виден,
+        // лес слегка подтапливает, но в основном всё нормально.
+        constexpr float TIDE_RISE_AMOUNT   = 2.0f;
+        constexpr float TIDE_RISE_DURATION = 20.0f;  // ramp up за 20 сек
+        constexpr float TIDE_FALL_DURATION = 30.0f;  // ramp down за 30 сек
     }
 
     namespace Grass {
-        // Кол-во на старте
-        constexpr int MEADOW_COUNT  = 600; // обычная трава на лугах
-        constexpr int FERN_COUNT    = 400; // папоротники в лесу
-        constexpr int COASTAL_COUNT = 200; // прибрежная трава у воды
+        // Кол-во на старте — увеличено почти вдвое для устойчивой экосистемы
+        constexpr int MEADOW_COUNT  = 1200; // обычная трава на лугах
+        constexpr int FERN_COUNT    = 700;  // папоротники в лесу
+        constexpr int COASTAL_COUNT = 350;  // прибрежная трава у воды
+
+        // Regrowth — съеденная трава возвращается через 60-90 секунд.
+        // Без этого экосистема выгорает за пару минут.
+        constexpr float REGROW_MIN  = 60.0f;
+        constexpr float REGROW_MAX  = 90.0f;
 
         // Насыщение от поедания (восстановление голода)
         constexpr float MEADOW_NUTRITION  = 60.0f; // сытная луговая трава
@@ -98,9 +107,17 @@ namespace Config {
         // Радиус разброса при первоначальном спавне стада
         constexpr float SPAWN_FLOCK_RADIUS    = 5.0f;
 
-        constexpr float VISION_RADIUS    = 8.0f;
+        // VISION 12 — овца замечает волка на 12 блоков (было 8).
+        // С DODGE_RANGE=6 даёт реальное окно для финта.
+        constexpr float VISION_RADIUS    = 12.0f;
         constexpr float EAT_RADUIS       = 1.0f;
         constexpr float REACH_TARGET_DIST = 0.2f;
+
+        // ── РЕАКЦИЯ НА ПРИЛИВ ────────────────────────────────────
+        // Если вода поднимается и овца близко к берегу, она паникует
+        // и бежит на сушу. С малым шансом — замирает и тонет.
+        constexpr float TIDE_DETECTION_DIST = 4.0f;  // если position.y - waterLvl < этого = паника
+        constexpr float TIDE_FREEZE_CHANCE  = 0.08f; // 8% овец замирают и тонут
 
         constexpr float MAX_HUNGER           = 100.0f;
         constexpr float HUNGER_THRESHOLD     = 50.0f;
@@ -238,27 +255,29 @@ namespace Config {
     }
 
         namespace Crab {
-        constexpr int   INITIAL_COUNT       = 30;
+        constexpr int   INITIAL_COUNT       = 50;   // больше на старте
  
-        constexpr float SPEED_WALK          = 1.5f;
-        constexpr float WANDER_RADIUS       = 25.0f;
+        constexpr float SPEED_WALK          = 1.8f; // чуть бодрее
+        constexpr float WANDER_RADIUS       = 35.0f; // шире зона прогулки
  
         // Поедание трупа
-        constexpr float EAT_RADIUS          = 2.0f;    // дистанция для поедания
-        constexpr float EAT_RATE            = 8.0f;    // единиц питания/сек (каждый краб)
+        constexpr float EAT_RADIUS          = 2.0f;
+        constexpr float EAT_RATE            = 8.0f;
         constexpr float HUNGER_MAX          = 100.0f;
-        constexpr float HUNGER_DECAY        = 0.5f;    // ед/сек
-        constexpr float HUNGER_EAT_TRIGGER  = 60.0f;   // при каком уровне голода ищет еду
+        constexpr float HUNGER_DECAY        = 0.35f;  // голодает медленнее
+        constexpr float HUNGER_EAT_TRIGGER  = 60.0f;
  
-        // Возраст
-        constexpr float LIFESPAN_MIN        = 120.0f;  // 2 минуты
-        constexpr float LIFESPAN_MAX        = 200.0f;  // ~3.3 минуты
+        // Возраст — крабы живут гораздо дольше
+        constexpr float LIFESPAN_MIN        = 50.0f; 
+        constexpr float LIFESPAN_MAX        = 80.0f; 
  
-        // Размножение
-        constexpr float MATING_HUNGER_THRESHOLD = 80.0f;  // нужно наесться
-        constexpr float MATING_COOLDOWN         = 40.0f;
+        // Размножение — за раз сразу несколько детей (как у настоящих крабов)
+        constexpr float MATING_HUNGER_THRESHOLD = 70.0f;
+        constexpr float MATING_COOLDOWN         = 35.0f;
         constexpr float MATING_PROCESS_TIME     = 3.0f;
         constexpr float MATING_APPROACH_DIST    = 1.5f;
         constexpr float SPAWN_OFFSET_RADIUS     = 2.0f;
+        constexpr int   BABIES_MIN              = 2;  // минимум 2 детёныша
+        constexpr int   BABIES_MAX              = 4;  // максимум 4
     }
 }

@@ -35,6 +35,19 @@ private:
     // Это позволяет перемещаться между стадами после побега.
     float   flockUpdateTimer = 5.0f;
 
+    // ── РЕАКЦИЯ НА ПРИЛИВ ────────────────────────────────────
+    // tideCheckTimer  — раз в секунду проверяем угрозу
+    // tideFrozen      — если true, овца "замерла" и тонет (не двигается)
+    // tideEvalDone    — однократная роль ставки замирания после первого триггера
+    float tideCheckTimer = 0.0f;
+    bool  tideFrozen     = false;
+    bool  tideEvalDone   = false;
+
+    // ── НАПРАВЛЕНИЕ ВЗГЛЯДА ──────────────────────────────────
+    // Запоминается при движении и используется в Draw для поворота модели.
+    float facingAngle = 0.0f;
+    Vector3 lastPosition = { 0.0f, 0.0f, 0.0f };
+
     void PickNewWanderTarget(World* world);
     void ForceEscape(World* world);
 

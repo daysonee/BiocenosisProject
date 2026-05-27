@@ -3,6 +3,38 @@
 #include "carcass.hpp"
 #include "../core/world.hpp"
 #include <raymath.h>
+#include <rlgl.h>
+
+// Свой Move для крабов: позволяет ходить даже когда новая клетка
+// чуть ниже уровня воды (краб всё равно живёт на полосе пляжа).
+// Базовый Animal::MoveTowardsTarget блокирует движение через воду
+// и крабы при приливе зависают.
+static bool CrabMove(Vector3& position, Vector3 target, float speed,
+                     float deltaTime, World* world, float& facingAngle) {
+    Vector3 dir = { target.x - position.x, 0.0f, target.z - position.z };
+    float dist = Vector3Length(dir);
+    if (dist < 0.05f) return false;
+
+    facingAngle = atan2f(dir.x, dir.z) * RAD2DEG;
+
+    Vector3 nd = Vector3Normalize(dir);
+    float step = speed * deltaTime;
+    if (step > dist) step = dist;
+
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    float nx = Clamp(position.x + nd.x * step, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+    float nz = Clamp(position.z + nd.z * step, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+
+    // Крабам разрешён мелководный пляж: блокируем только глубокую воду
+    float h = world->GetHeight(nx, nz);
+    float waterLvl = world->GetCurrentWaterLevel();
+    if (h > waterLvl - 1.5f) {
+        position.x = nx;
+        position.z = nz;
+        return true;
+    }
+    return false;
+}
  
 // ─────────────────────────────────────────────────────────────────────────────
 Crab::Crab(Vector3 startPosition) : Animal(startPosition) {
@@ -11,7 +43,7 @@ Crab::Crab(Vector3 startPosition) : Animal(startPosition) {
     state    = AnimalState::WANDERING;
     targetPosition = startPosition;
  
-    stateTimer = (float)GetRandomValue(10, 30) / 10.0f;
+    stateTimer = (float)GetRandomValue(5, 15) / 10.0f;
  
     // Рандомная продолжительность жизни
     lifespan = (float)GetRandomValue(
@@ -28,8 +60,14 @@ Crab::Crab(Vector3 startPosition) : Animal(startPosition) {
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
  
 bool Crab::IsOnBeach(float height) const {
-    return (height >= Config::World::WATER_LEVEL - 0.2f &&
-            height <= Config::World::SAND_LEVEL  + 0.5f);
+    // Полоса пляжа сдвигается вместе с уровнем воды (приливы)
+    // Используем статический ориентир — пляж это полоса 2 блока от берега
+    // ВВЕРХ от уровня воды. При приливе пляж "сдвигается" наверх.
+    // height — точка которую проверяем
+    // Граница: между (waterLvl-0.3) и (waterLvl+3.5)
+    // Но т.к. IsOnBeach не имеет world, используем верхнюю границу песка широко
+    return (height >= Config::World::WATER_LEVEL - 0.5f &&
+            height <= Config::World::SAND_LEVEL  + 2.0f);
 }
  
 void Crab::PickNewBeachTarget(World* world) {
@@ -55,7 +93,7 @@ void Crab::PickNewBeachTarget(World* world) {
     // Фолбэк: остаться на месте
     targetPosition = position;
     state = AnimalState::IDLE;
-    stateTimer = (float)GetRandomValue(20, 40) / 10.0f;
+    stateTimer = (float)GetRandomValue(10, 20) / 10.0f;
 }
  
 // Ищет ближайший живой труп с едой в пределах всей карты.
@@ -105,7 +143,7 @@ void Crab::Update(float deltaTime, World* world) {
         targetCarcass = nullptr;
         if (state == AnimalState::HUNGRY) {
             state      = AnimalState::WANDERING;
-            stateTimer = (float)GetRandomValue(10, 30) / 10.0f;
+            stateTimer = (float)GetRandomValue(5, 15) / 10.0f;
             PickNewBeachTarget(world);
         }
     }
@@ -131,10 +169,16 @@ void Crab::Update(float deltaTime, World* world) {
         }
     }
  
-    // ── 5. СТРАХОВКА ПЛЯЖА ───────────────────────────────────────────────────
-    float currentHeight = world->GetHeight(position.x, position.z);
-    if (!IsOnBeach(currentHeight) && state != AnimalState::IDLE && !isMating) {
-        PickNewBeachTarget(world);
+    // ── 5. СТРАХОВКА ПЛЯЖА (раз в 3 секунды, не каждый тик) ──────────────────
+    static thread_local float beachCheckTimer = 0.0f;
+    beachCheckTimer -= deltaTime;
+    if (beachCheckTimer <= 0.0f) {
+        beachCheckTimer = 3.0f;
+        float currentHeight = world->GetHeight(position.x, position.z);
+        if (!IsOnBeach(currentHeight) && state != AnimalState::IDLE && !isMating
+            && state != AnimalState::HUNGRY) {
+            PickNewBeachTarget(world);
+        }
     }
  
     // ── 6. МАШИНА СОСТОЯНИЙ ──────────────────────────────────────────────────
@@ -154,27 +198,32 @@ void Crab::Update(float deltaTime, World* world) {
             if (isMating && mateTarget != nullptr) {
                 // Идём к партнёру
                 targetPosition = mateTarget->GetPosition();
-                MoveTowardsTarget(deltaTime, world);
+                CrabMove(position, targetPosition,
+                         Config::Crab::SPEED_WALK, deltaTime, world, facingAngle);
  
                 float dist = Vector3Distance(position, mateTarget->GetPosition());
                 if (dist <= Config::Crab::MATING_APPROACH_DIST) {
                     // Оба рядом — считаем прогресс
                     matingProgressTimer += deltaTime;
                     if (matingProgressTimer >= Config::Crab::MATING_PROCESS_TIME) {
-                        // ── РОЖДЕНИЕ ─────────────────────────────────────
-                        // Только «инициатор» (тот, кто нашёл партнёра первым) спавнит детёныша
-                        if (mateTarget->isMating) {   // оба ещё в процессе
-                            Vector3 babyPos = {
-                                position.x + (float)GetRandomValue(-20, 20) / 10.0f,
-                                position.y,
-                                position.z + (float)GetRandomValue(-20, 20) / 10.0f
-                            };
-                            babyPos.y = world->GetHeight(babyPos.x, babyPos.z);
-                            world->QueueEntity(std::make_unique<Crab>(babyPos));
- 
-                            // Сердечки
-                            world->SpawnParticles(position, RED, 6, true);
-                            world->SpawnParticles(mateTarget->GetPosition(), RED, 6, true);
+                        // ── РОЖДЕНИЕ нескольких детёнышей ─────────────────
+                        // Только «инициатор» (тот, кто ещё в isMating) рожает.
+                        if (mateTarget->isMating) {
+                            int babies = GetRandomValue(
+                                Config::Crab::BABIES_MIN,
+                                Config::Crab::BABIES_MAX);
+                            for (int i = 0; i < babies; ++i) {
+                                Vector3 babyPos = {
+                                    position.x + (float)GetRandomValue(-30, 30) / 10.0f,
+                                    position.y,
+                                    position.z + (float)GetRandomValue(-30, 30) / 10.0f
+                                };
+                                babyPos.y = world->GetHeight(babyPos.x, babyPos.z);
+                                world->QueueEntity(std::make_unique<Crab>(babyPos));
+                            }
+                            // Сердечки + всплеск
+                            world->SpawnParticles(position, RED, 8, true);
+                            world->SpawnParticles(mateTarget->GetPosition(), RED, 8, true);
                         }
  
                         // Сброс состояния у обоих
@@ -198,12 +247,13 @@ void Crab::Update(float deltaTime, World* world) {
             }
  
             // Обычная прогулка
-            MoveTowardsTarget(deltaTime, world);
+            CrabMove(position, targetPosition,
+                     Config::Crab::SPEED_WALK, deltaTime, world, facingAngle);
  
             float distToTarget = Vector3Distance(position, targetPosition);
             if (distToTarget <= 0.5f || stateTimer <= 0.0f) {
                 state      = AnimalState::IDLE;
-                stateTimer = (float)GetRandomValue(10, 40) / 10.0f;
+                stateTimer = (float)GetRandomValue(5, 15) / 10.0f;
             }
  
             // Голодный краб переключается на поиск еды
@@ -230,7 +280,8 @@ void Crab::Update(float deltaTime, World* world) {
             }
  
             targetPosition = targetCarcass->GetPosition();
-            MoveTowardsTarget(deltaTime, world);
+            CrabMove(position, targetPosition,
+                     Config::Crab::SPEED_WALK, deltaTime, world, facingAngle);
  
             float dist = Vector3Distance(position, targetCarcass->GetPosition());
             if (dist <= Config::Crab::EAT_RADIUS) {
@@ -271,35 +322,36 @@ void Crab::Draw() {
  
     // Масштаб: молодые крабы (первая треть жизни) немного меньше
     float ageFrac = Clamp(ageTimer / lifespan, 0.0f, 1.0f);
-    float scale   = 0.7f + 0.3f * fminf(ageFrac * 3.0f, 1.0f);  // 0.7 → 1.0 за первую треть
+    float scale   = 0.7f + 0.3f * fminf(ageFrac * 3.0f, 1.0f);
  
     // Цвет: краснеет к старости
     unsigned char r = (unsigned char)(178 + ageFrac * 50);
     unsigned char g = (unsigned char)(34  - ageFrac * 20);
     Color bodyColor = { r, g, 34, 255 };
  
+    // Поворот в направлении движения
+    rlPushMatrix();
+    rlTranslatef(position.x, position.y, position.z);
+    rlRotatef(facingAngle, 0.0f, 1.0f, 0.0f);
+
     Vector3 crabSize = { 0.8f * scale, 0.4f * scale, 0.6f * scale };
-    DrawCube(position, crabSize.x, crabSize.y, crabSize.z, bodyColor);
-    DrawCubeWires(position, crabSize.x, crabSize.y, crabSize.z, ORANGE);
+    DrawCube({0.0f, 0.0f, 0.0f}, crabSize.x, crabSize.y, crabSize.z, bodyColor);
+    DrawCubeWires({0.0f, 0.0f, 0.0f}, crabSize.x, crabSize.y, crabSize.z, ORANGE);
  
-    // Глаза (на стебельках)
+    // Глаза — теперь смотрят ВПЕРЁД (по локальной оси +Z)
     float eyeH = 0.3f * scale;
-    Vector3 eyeLeft  = { position.x + 0.3f * scale, position.y + eyeH, position.z + 0.2f * scale };
-    Vector3 eyeRight = { position.x + 0.3f * scale, position.y + eyeH, position.z - 0.2f * scale };
-    DrawSphere(eyeLeft,  0.08f * scale, BLACK);
-    DrawSphere(eyeRight, 0.08f * scale, BLACK);
+    DrawSphere({-0.15f * scale, eyeH, 0.3f * scale}, 0.08f * scale, BLACK);
+    DrawSphere({ 0.15f * scale, eyeH, 0.3f * scale}, 0.08f * scale, BLACK);
  
-    // Клешни (два маленьких куба спереди)
-    float cx = position.x + 0.55f * scale;
-    float cy = position.y + 0.05f * scale;
-    DrawCube({ cx, cy, position.z + 0.38f * scale }, 0.22f * scale, 0.18f * scale, 0.18f * scale, bodyColor);
-    DrawCube({ cx, cy, position.z - 0.38f * scale }, 0.22f * scale, 0.18f * scale, 0.18f * scale, bodyColor);
- 
-    // Когда ест — покачивает клешнями (смещение по Y)
-    if (state == AnimalState::HUNGRY && targetCarcass != nullptr) {
-        float bob = sinf((float)GetTime() * 8.0f) * 0.06f;
-        DrawCube({ cx, cy + bob, position.z + 0.38f * scale }, 0.22f * scale, 0.18f * scale, 0.18f * scale, RED);
-        DrawCube({ cx, cy - bob, position.z - 0.38f * scale }, 0.22f * scale, 0.18f * scale, 0.18f * scale, RED);
-    }
+    // Клешни — спереди (по локальной +Z)
+    float cy = 0.05f * scale;
+    Color clawColor = (state == AnimalState::HUNGRY && targetCarcass != nullptr) ? RED : bodyColor;
+    float bob = (state == AnimalState::HUNGRY && targetCarcass != nullptr)
+                ? sinf((float)GetTime() * 8.0f) * 0.06f : 0.0f;
+    DrawCube({-0.38f * scale, cy + bob, 0.55f * scale},
+             0.18f * scale, 0.18f * scale, 0.22f * scale, clawColor);
+    DrawCube({ 0.38f * scale, cy - bob, 0.55f * scale},
+             0.18f * scale, 0.18f * scale, 0.22f * scale, clawColor);
+
+    rlPopMatrix();
 }
- 

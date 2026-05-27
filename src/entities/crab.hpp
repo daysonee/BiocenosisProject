@@ -23,6 +23,9 @@ private:
     float matingProgressTimer = 0.0f;
     Crab*  mateTarget         = nullptr;
     bool   isMating           = false;
+
+    // ── Поворот в направлении движения ──────────────────────────────
+    float facingAngle = 0.0f;
  
     // ── Вспомогательные ─────────────────────────────────────────────
     bool IsOnBeach(float height) const;

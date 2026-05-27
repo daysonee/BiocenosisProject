@@ -504,17 +504,39 @@ void World::Update(float deltaTime){
 
     float currentWaterLvl = GetCurrentWaterLevel();
 
-    for (size_t i = 0; i < grassPatches.size(); ++i) {
-        // Если трава ещё жива, но её высота оказалась ниже или равна уровню воды
-        if (grassPatches[i].alive && grassPatches[i].position.y <= currentWaterLvl) {
-            grassPatches[i].alive = false;
+    // ── ПРИЛИВ И ТРАВА ───────────────────────────────────────────
+    // Раньше трава НАВСЕГДА умирала при затоплении — это уничтожало
+    // экосистему за несколько минут. Теперь трава просто временно
+    // недоступна: проверка на затопление делается при поиске/поедании
+    // в FindNearestGrass и EatGrass. Здесь же только эффект всплеска
+    // в момент первого затопления (для красоты).
+    static float splashAccumTimer = 0.0f;
+    splashAccumTimer -= deltaTime;
+    if (splashAccumTimer <= 0.0f && currentWaterLvl > Config::World::WATER_LEVEL + 0.5f) {
+        splashAccumTimer = 0.8f;
+        // Найдём 1-2 травинки на границе воды и спавним всплеск
+        for (int tries = 0; tries < 5; ++tries) {
+            int idx = GetRandomValue(0, (int)grassPatches.size() - 1);
+            if (grassPatches[idx].alive
+                && grassPatches[idx].position.y > currentWaterLvl - 0.3f
+                && grassPatches[idx].position.y < currentWaterLvl + 0.3f)
+            {
+                Vector3 splashPos = grassPatches[idx].position;
+                splashPos.y = currentWaterLvl + 0.1f;
+                SpawnParticles(splashPos, Color{ 60, 130, 220, 255 }, 3, false);
+                break;
+            }
+        }
+    }
 
-            // Добавим красивый визуальный эффект: всплеск воды (синие партиклы) вместо травы!
-            Vector3 splashPos = grassPatches[i].position;
-            splashPos.y = currentWaterLvl + 0.1f; // Чуть выше уровня воды для видимости
-            
-            // Спавним 4 сине-голубых партикла всплеска
-            SpawnParticles(splashPos, Color{ 60, 130, 220, 255 }, 4, false);
+    // ── REGROWTH ТРАВЫ ───────────────────────────────────────────
+    // Съеденная трава возвращается через 60-90 секунд.
+    for (size_t i = 0; i < grassPatches.size(); ++i) {
+        if (!grassPatches[i].alive && grassPatches[i].regrowTimer > 0.0f) {
+            grassPatches[i].regrowTimer -= deltaTime;
+            if (grassPatches[i].regrowTimer <= 0.0f) {
+                grassPatches[i].alive = true;
+            }
         }
     }
 
@@ -535,9 +557,10 @@ void World::Draw(){
         (Color){ 30, 120, 190, 255 } 
     );
 
-    // Отрисовка живой травы по типам
+    // Отрисовка живой травы по типам (затопленную не рисуем)
     for (const auto& g : grassPatches) {
         if (!g.alive) continue;
+        if (g.position.y <= waterLvl) continue;  // под приливом скрыта
         Matrix m = MatrixTranslate(g.position.x, g.position.y + 0.2f, g.position.z);
         switch (g.type) {
             case Config::Grass::Type::MEADOW:  DrawMesh(meadowMesh,  meadowMat,  m); break;
@@ -607,18 +630,80 @@ void World::Draw(){
             DrawCubeWires(p.position, s, s, s, strokeColor);
         }
     }
-    // ─── ОТРИСОВКА ДОМИКА ОХОТНИКА ───
-    // База домика (коричневый куб 4x4x4)
-    Vector3 houseCenter = hunterHutPosition;
-    houseCenter.y += 2.0f; // Приподнимаем, чтобы куб стоял НА земле, а не наполовину под ней
-    DrawCube(houseCenter, 4.0f, 4.0f, 4.0f, BROWN);
-    DrawCubeWires(houseCenter, 4.0f, 4.0f, 4.0f, DARKBROWN);
+    // ─── ОТРИСОВКА ХИЖИНЫ ОХОТНИКА ───
+    // Простая деревенская изба с двускатной крышей, дверью, окном и трубой.
+    Vector3 hp = hunterHutPosition;
 
-    // Крыша домика (бордовый куб поменьше чуть выше основания)
-    Vector3 roofPos = hunterHutPosition;
-    roofPos.y += 4.0f;
-    DrawCube((Vector3){roofPos.x, roofPos.y + 1.0f, roofPos.z}, 4.5f, 2.0f, 4.5f, MAROON);
-    DrawCubeWires((Vector3){roofPos.x, roofPos.y + 1.0f, roofPos.z}, 4.5f, 2.0f, 4.5f, BLACK);
+    // 1. Сруб (основание) — тёмно-коричневое дерево
+    Vector3 wallsCenter = { hp.x, hp.y + 1.75f, hp.z };
+    DrawCube(wallsCenter, 5.0f, 3.5f, 4.0f, (Color){115, 80, 55, 255});
+    DrawCubeWires(wallsCenter, 5.0f, 3.5f, 4.0f, (Color){60, 40, 25, 255});
+
+    // 2. Имитация брёвен — три горизонтальных тёмных полосы на стенах
+    for (int i = 0; i < 3; ++i) {
+        float by = hp.y + 0.5f + i * 1.0f;
+        DrawCube({hp.x, by, hp.z + 2.02f}, 5.05f, 0.08f, 0.05f, (Color){60, 40, 25, 255});
+        DrawCube({hp.x, by, hp.z - 2.02f}, 5.05f, 0.08f, 0.05f, (Color){60, 40, 25, 255});
+        DrawCube({hp.x + 2.52f, by, hp.z}, 0.05f, 0.08f, 4.05f, (Color){60, 40, 25, 255});
+        DrawCube({hp.x - 2.52f, by, hp.z}, 0.05f, 0.08f, 4.05f, (Color){60, 40, 25, 255});
+    }
+
+    // 3. Дверь (тёмный прямоугольник на передней стене, z = hp.z + 2.02)
+    DrawCube({hp.x - 0.8f, hp.y + 1.2f, hp.z + 2.03f},
+             1.2f, 2.0f, 0.05f, (Color){70, 45, 25, 255});
+    DrawCubeWires({hp.x - 0.8f, hp.y + 1.2f, hp.z + 2.03f},
+                  1.2f, 2.0f, 0.05f, (Color){30, 20, 10, 255});
+    // Ручка двери
+    DrawCube({hp.x - 0.3f, hp.y + 1.2f, hp.z + 2.07f},
+             0.1f, 0.1f, 0.05f, GOLD);
+
+    // 4. Окно (светло-голубой квадрат с крестовиной)
+    Vector3 winCenter = {hp.x + 1.2f, hp.y + 2.2f, hp.z + 2.03f};
+    DrawCube(winCenter, 1.0f, 1.0f, 0.05f, (Color){170, 210, 230, 255});
+    DrawCubeWires(winCenter, 1.0f, 1.0f, 0.05f, (Color){50, 35, 20, 255});
+    // Крестовина окна
+    DrawCube({winCenter.x, winCenter.y, winCenter.z + 0.03f},
+             1.0f, 0.06f, 0.02f, (Color){50, 35, 20, 255});
+    DrawCube({winCenter.x, winCenter.y, winCenter.z + 0.03f},
+             0.06f, 1.0f, 0.02f, (Color){50, 35, 20, 255});
+
+    // 5. Крыша — двускатная (две наклонные пластины)
+    float roofY = hp.y + 3.5f;
+    Color roofColor = (Color){130, 50, 40, 255};
+    Color roofWire  = (Color){70, 25, 20, 255};
+    // Передний/задний скат — наклонённые DrawCube через rlPushMatrix
+    rlPushMatrix();
+    rlTranslatef(hp.x, roofY + 0.75f, hp.z);
+    // Левый скат — наклонён по Z-оси
+    rlPushMatrix();
+    rlTranslatef(-1.3f, 0.0f, 0.0f);
+    rlRotatef(-35.0f, 0.0f, 0.0f, 1.0f);
+    DrawCube({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofColor);
+    DrawCubeWires({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofWire);
+    rlPopMatrix();
+    // Правый скат
+    rlPushMatrix();
+    rlTranslatef(1.3f, 0.0f, 0.0f);
+    rlRotatef(35.0f, 0.0f, 0.0f, 1.0f);
+    DrawCube({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofColor);
+    DrawCubeWires({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofWire);
+    rlPopMatrix();
+    rlPopMatrix();
+
+    // Конёк крыши (тёмная балка вдоль верха)
+    DrawCube({hp.x, roofY + 2.15f, hp.z}, 0.2f, 0.2f, 4.5f, (Color){50, 30, 20, 255});
+
+    // 6. Труба — на правой части крыши
+    Vector3 chimneyBase = {hp.x + 1.0f, hp.y + 4.5f, hp.z};
+    DrawCube(chimneyBase, 0.6f, 1.5f, 0.6f, (Color){90, 90, 95, 255});
+    DrawCubeWires(chimneyBase, 0.6f, 1.5f, 0.6f, (Color){40, 40, 45, 255});
+    // Верхний ободок трубы
+    DrawCube({chimneyBase.x, chimneyBase.y + 0.85f, chimneyBase.z},
+             0.75f, 0.15f, 0.75f, (Color){60, 60, 65, 255});
+
+    // 7. Лёгкий "коврик" перед дверью (тёмная плитка на земле)
+    DrawCube({hp.x - 0.8f, hp.y + 0.02f, hp.z + 2.4f},
+             1.4f, 0.04f, 0.6f, (Color){90, 70, 50, 255});
 }
 
 
@@ -705,8 +790,11 @@ int World::FindNearestGrass(Vector3 from, float maxRadius,
                             Vector3& outPos, Config::Grass::Type& outType) const {
     int   bestIdx  = -1;
     float bestDist = maxRadius;
+    float waterLvl = GetCurrentWaterLevel();
     for (size_t i = 0; i < grassPatches.size(); ++i) {
         if (!grassPatches[i].alive) continue;
+        // Пропускаем траву которая сейчас под водой (прилив)
+        if (grassPatches[i].position.y <= waterLvl) continue;
         float d = Vector3Distance(from, grassPatches[i].position);
         if (d < bestDist) {
             bestDist = d;
@@ -725,6 +813,9 @@ float World::EatGrass(int index) {
     if (index < 0 || index >= (int)grassPatches.size()) return 0.0f;
     if (!grassPatches[index].alive) return 0.0f;
     grassPatches[index].alive = false;
+    // Запускаем таймер регенерации
+    grassPatches[index].regrowTimer = (float)GetRandomValue(
+        (int)Config::Grass::REGROW_MIN, (int)Config::Grass::REGROW_MAX);
 
     // Партиклы исчезающей травы: ярко-зелёный взрыв из листочков
     Vector3 burstPos = grassPatches[index].position;

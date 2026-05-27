@@ -5,6 +5,7 @@
 #include "../core/world.hpp"
 #include "../core/constants.hpp"
 #include <raymath.h>
+#include <rlgl.h>
 #include <cmath>
 
 // =====================================================================
@@ -851,6 +852,17 @@ void Wolf::Draw() {
         drawPos.x += sinf(GetTime() * 25.0f) * 0.08f;
     }
 
+    // ── Обновляем угол поворота по фактическому движению ──
+    Vector3 movedDelta = {
+        position.x - lastDrawPos.x, 0.0f,
+        position.z - lastDrawPos.z
+    };
+    float movedDist = Vector3Length(movedDelta);
+    if (movedDist > 0.02f) {
+        facingAngle = atan2f(movedDelta.x, movedDelta.z) * RAD2DEG;
+    }
+    lastDrawPos = position;
+
     float size = 1.4f * CurrentSizeFactor();
 
     Color body = DARKGRAY;
@@ -859,14 +871,19 @@ void Wolf::Draw() {
     else if (ageStage == Config::Wolf::AgeStage::BABY)
         body = (Color){120, 110, 110, 255};
 
-    DrawCube(drawPos, size, size, size, body);
-
-    float eyeOff = 0.3f * CurrentSizeFactor();
     float eyeSize = 0.2f * CurrentSizeFactor();
     if (ageStage == Config::Wolf::AgeStage::ADULT && isLeader) eyeSize *= 1.3f;
 
-    Vector3 eye1 = { drawPos.x + size * 0.5f, drawPos.y + eyeOff, drawPos.z - eyeOff };
-    Vector3 eye2 = { drawPos.x + size * 0.5f, drawPos.y + eyeOff, drawPos.z + eyeOff };
-    DrawCube(eye1, eyeSize, eyeSize, eyeSize, RED);
-    DrawCube(eye2, eyeSize, eyeSize, eyeSize, RED);
+    // Отрисовка с поворотом — модель смотрит в направление движения
+    rlPushMatrix();
+    rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
+    rlRotatef(facingAngle, 0.0f, 1.0f, 0.0f);
+
+    DrawCube({0.0f, 0.0f, 0.0f}, size, size, size, body);
+    // Глаза теперь на «морде» — по локальной +Z (вперёд)
+    float eyeOff = 0.3f * CurrentSizeFactor();
+    DrawCube({-eyeOff, eyeOff, size * 0.5f}, eyeSize, eyeSize, eyeSize, RED);
+    DrawCube({ eyeOff, eyeOff, size * 0.5f}, eyeSize, eyeSize, eyeSize, RED);
+
+    rlPopMatrix();
 }
