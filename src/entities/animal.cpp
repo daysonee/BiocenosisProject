@@ -12,15 +12,10 @@ Animal::Animal(Vector3 startPosition) : Entity(startPosition) {
 }
 
 // Пробует переместить животное к цели с обходом воды в стиле Minecraft.
-// Алгоритм:
-//   1. Пробуем полный шаг (dx, dz).
-//   2. Если в воде — пробуем только X-составляющую (скольжение вдоль берега по Z).
-//   3. Если тоже вода — пробуем только Z-составляющую (скольжение вдоль берега по X).
-//   4. Если оба варианта в воде — возвращаем false (животное заблокировано).
-// Всегда корректируем Y по рельефу.
 bool Animal::MoveTowardsTarget(float deltaTime, World* world) {
+    // Защита от null world (важно для тестов и edge cases)
+    if (!world) return false;
 
-    // Игнорируем разницу по Y при выборе направления — двигаемся строго в горизонтали
     Vector3 direction = {
         targetPosition.x - position.x,
         0.0f,
@@ -29,7 +24,6 @@ bool Animal::MoveTowardsTarget(float deltaTime, World* world) {
 
     float distance = Vector3Length(direction);
     if (distance <= 0.1f) {
-        // Уже у цели
         if (world) position.y = world->GetHeight(position.x, position.z);
         return true;
     }
@@ -39,43 +33,52 @@ bool Animal::MoveTowardsTarget(float deltaTime, World* world) {
     float   dx       = normDir.x * stepDist;
     float   dz       = normDir.z * stepDist;
 
+    // Текущий уровень воды (с учётом прилива)
+    float waterLvl = world->GetCurrentWaterLevel();
+
+    // Границы карты — животное никогда не выходит за пределы
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    const float minB = -(float)halfMap + 2.0f;
+    const float maxB =  (float)halfMap - 2.0f;
+
     bool moved = false;
 
     // --- Попытка 1: полный шаг ---
     {
-        float nx = position.x + dx;
-        float nz = position.z + dz;
-        if (world->GetHeight(nx, nz) > Config::World::WATER_LEVEL) {
+        float nx = Clamp(position.x + dx, minB, maxB);
+        float nz = Clamp(position.z + dz, minB, maxB);
+        if (world->GetHeight(nx, nz) > waterLvl) {
             position.x = nx;
             position.z = nz;
             moved = true;
         }
     }
 
-    // --- Попытка 2: скольжение по X (сохраняем Z) ---
+    // --- Попытка 2: скольжение по X ---
     if (!moved && fabsf(dx) > 0.001f) {
-        float nx = position.x + dx;
-        if (world->GetHeight(nx, position.z) > Config::World::WATER_LEVEL) {
+        float nx = Clamp(position.x + dx, minB, maxB);
+        if (world->GetHeight(nx, position.z) > waterLvl) {
             position.x = nx;
             moved = true;
         }
     }
 
-    // --- Попытка 3: скольжение по Z (сохраняем X) ---
+    // --- Попытка 3: скольжение по Z ---
     if (!moved && fabsf(dz) > 0.001f) {
-        float nz = position.z + dz;
-        if (world->GetHeight(position.x, nz) > Config::World::WATER_LEVEL) {
+        float nz = Clamp(position.z + dz, minB, maxB);
+        if (world->GetHeight(position.x, nz) > waterLvl) {
             position.z = nz;
             moved = true;
         }
     }
 
     if (moved && world != nullptr) {
-        // Выталкиваем животное из стволов (0.4f - радиус тела из констант овцы)
         position = world->ResolveTreeCollisions(position, 0.4f);
+        // На случай если ResolveTreeCollisions вытолкнул за границу
+        position.x = Clamp(position.x, minB, maxB);
+        position.z = Clamp(position.z, minB, maxB);
     }
 
-    // Корректируем высоту по рельефу в любом случае
     if (world) position.y = world->GetHeight(position.x, position.z);
 
     return moved;

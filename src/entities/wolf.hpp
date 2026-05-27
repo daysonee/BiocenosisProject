@@ -4,6 +4,7 @@
 
 class Sheep;
 class World;
+class Carcass;
 
 class Wolf : public Animal {
 private:
@@ -46,6 +47,9 @@ private:
     // Смерть от голода
     float starvationTimer = 0.0f;
 
+    // После еды травы голод падает быстрее GRASS_EFFECT_DURATION секунд
+    float grassEffectTimer = 0.0f;
+
     // Сигнал «я только что умер от старости» — обрабатывается
     // на следующем тике для выбора нового вожака
     bool diedOfOldAge = false;
@@ -74,8 +78,9 @@ private:
     void UpdateFight(float dt, World* world);
 
     // Поиск
-    Sheep* FindNearestSheepInRadius(World* world, float radius) const;
-    Wolf*  FindEnemyWolfNearby(World* world) const;
+    Sheep*   FindNearestSheepInRadius(World* world, float radius) const;
+    Wolf*    FindEnemyWolfNearby(World* world) const;
+    Carcass* FindNearestCarcassInRadius(World* world, float radius) const;
 
     float CurrentPounceReach() const;
     float CurrentLeadTime()   const;
@@ -114,4 +119,11 @@ public:
     void SetPackId(int newPackId) { packId = newPackId; }
 
     void PromoteToLeader();
+
+    // Очистка dangling pointers перед удалением dying-сущности
+    void OnEntityDying(Entity* dying) override {
+        if (targetPrey  == (Sheep*)dying) { targetPrey = nullptr; hasPrevPreyPos = false; }
+        if (mateTarget  == (Wolf*) dying)   mateTarget  = nullptr;
+        if (fightTarget == (Wolf*) dying)   fightTarget = nullptr;
+    }
 };

@@ -21,4 +21,9 @@ class Entity {
         void Die() { isAlive = false; }
 
         virtual Color GetDeathColor() const { return GRAY; }
+
+        // Вызывается World'ом перед удалением dying-сущностей.
+        // Каждая Entity должна обнулить все свои указатели на этого dying.
+        // Предотвращает dangling pointers между тиками.
+        virtual void OnEntityDying(Entity* dying) { (void)dying; }
 };

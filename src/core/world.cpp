@@ -3,6 +3,7 @@
 #include "../entities/wolf.hpp"
 #include "../entities/sheep.hpp"
 #include "../entities/plant.hpp"
+#include "../entities/carcass.hpp"
 #include "../utils/noise.hpp"
 #include <vector>
 #include <rlgl.h>
@@ -147,9 +148,19 @@ void World::ChangeWeather(){
     if (currentWeather == WeatherState::SUNNY){
         currentWeather = WeatherState::RAINING;
         weatherTimer = (float)GetRandomValue(Config::World::WEATHER_RAIN_MIN, Config::World::WEATHER_RAIN_MAX);
+        // ПРИЛИВ: уровень воды повышается за 30 сек
+        tideSourceOffset = waterLevelOffset;
+        tideTargetOffset = Config::World::TIDE_RISE_AMOUNT;
+        tideElapsed      = 0.0f;
+        tideDuration     = Config::World::TIDE_RISE_DURATION;
     } else{
         currentWeather = WeatherState::SUNNY;
         weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
+        // ОТЛИВ: уровень воды возвращается за 60 сек
+        tideSourceOffset = waterLevelOffset;
+        tideTargetOffset = 0.0f;
+        tideElapsed      = 0.0f;
+        tideDuration     = Config::World::TIDE_FALL_DURATION;
     }
 }
 
@@ -283,6 +294,18 @@ void World::Update(float deltaTime){
         ChangeWeather();
     }
 
+    // ── ПЛАВНОЕ ОБНОВЛЕНИЕ ПРИЛИВА ───────────────────────────────
+    if (tideElapsed < tideDuration) {
+        tideElapsed += deltaTime;
+        float t = tideElapsed / tideDuration;
+        if (t > 1.0f) t = 1.0f;
+        // Easing — плавный заход и выход (smooth-step)
+        float s = t * t * (3.0f - 2.0f * t);
+        waterLevelOffset = tideSourceOffset + (tideTargetOffset - tideSourceOffset) * s;
+    } else {
+        waterLevelOffset = tideTargetOffset;
+    }
+
     int halfMap = Config::World::MAP_SIZE / 2;
     if (currentWeather == WeatherState::RAINING){
        float rainSpeed = 60.0f * deltaTime;
@@ -323,6 +346,15 @@ void World::Update(float deltaTime){
         if (!entity->IsAlive()) {
             SpawnParticles(entity->GetPosition(), entity->GetDeathColor(), 15, false);
         }
+    }
+
+    // ── СПАВН ТРУПОВ ОВЕЦ ──────────────────────────────────────────
+    // Любая смерть овцы оставляет труп (Carcass) который может съесть волк
+    for (const auto& deadEntity : entities) {
+        if (deadEntity->IsAlive()) continue;
+        Sheep* deadSheep = dynamic_cast<Sheep*>(deadEntity.get());
+        if (!deadSheep) continue;
+        QueueEntity(std::make_unique<Carcass>(deadEntity->GetPosition()));
     }
 
     // ── НАСЛЕДОВАНИЕ ВОЖАКА (смерть ADULT-вожака от старости) ───────
@@ -410,6 +442,18 @@ void World::Update(float deltaTime){
         SpawnParticles(deathPos, (Color){200, 200, 200, 255}, 10, false);
     }
 
+    // ── ОЧИСТКА DANGLING POINTERS ──────────────────────────────────
+    // Перед удалением мёртвых: каждая ЖИВАЯ сущность должна обнулить
+    // свои указатели на сущности, которые сейчас будут удалены.
+    for (const auto& dying : entities) {
+        if (dying->IsAlive()) continue;
+        Entity* dyingPtr = dying.get();
+        for (const auto& alive : entities) {
+            if (!alive->IsAlive()) continue;
+            alive->OnEntityDying(dyingPtr);
+        }
+    }
+
     entities.erase(
         std::remove_if(entities.begin(), entities.end(), [](const std::unique_ptr<Entity>& e) {
             return !e->IsAlive();
@@ -426,9 +470,11 @@ void World::Update(float deltaTime){
 void World::Draw(){
     DrawModel(terrainModel, Vector3(), 1.0f, WHITE);
 
+    // Уровень воды с учётом прилива
+    float waterLvl = GetCurrentWaterLevel();
     DrawCubeV(
-        (Vector3){ 0.0f, Config::World::WATER_LEVEL / 2.0f, 0.0f }, 
-        (Vector3){ (float)mapSize, Config::World::WATER_LEVEL, (float)mapSize }, 
+        (Vector3){ 0.0f, waterLvl / 2.0f, 0.0f }, 
+        (Vector3){ (float)mapSize, waterLvl, (float)mapSize }, 
         (Color){ 30, 120, 190, 255 } 
     );
 

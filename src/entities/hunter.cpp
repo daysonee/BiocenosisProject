@@ -44,7 +44,7 @@ void Hunter::MoveTowards(Vector3 target, float speed, float deltaTime, World* wo
         float nx = position.x + normDir.x * step;
         float nz = position.z + normDir.z * step;
 
-        if (world->GetHeight(nx, nz) > Config::World::WATER_LEVEL) {
+        if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
             position.x = nx;
             position.z = nz;
         }

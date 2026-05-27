@@ -1,5 +1,6 @@
 #include "wolf.hpp"
 #include "sheep.hpp"
+#include "carcass.hpp"
 #include "../core/world.hpp"
 #include "../core/constants.hpp"
 #include <raymath.h>
@@ -128,24 +129,31 @@ void Wolf::MoveSwimming(float deltaTime, World* world) {
     float distance = Vector3Length(direction);
     if (distance < 0.1f) {
         position.y = fmaxf(world->GetHeight(position.x, position.z),
-                           Config::World::WATER_LEVEL);
+                           world->GetCurrentWaterLevel());
         return;
     }
 
     Vector3 normDir = Vector3Normalize(direction);
     float terrainHere = world->GetHeight(position.x, position.z);
-    bool inWaterNow = (terrainHere <= Config::World::WATER_LEVEL);
+    bool inWaterNow = (terrainHere <= world->GetCurrentWaterLevel());
 
     float curSpeed = speed * (inWaterNow ? Config::Wolf::SWIM_SPEED_FACTOR : 1.0f);
     float step = curSpeed * deltaTime;
 
-    position.x += normDir.x * step;
-    position.z += normDir.z * step;
+    // Границы карты — волк никогда не выходит за пределы
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    const float minB = -(float)halfMap + 2.0f;
+    const float maxB =  (float)halfMap - 2.0f;
+
+    position.x = Clamp(position.x + normDir.x * step, minB, maxB);
+    position.z = Clamp(position.z + normDir.z * step, minB, maxB);
     position = world->ResolveTreeCollisions(position, 0.4f);
+    position.x = Clamp(position.x, minB, maxB);
+    position.z = Clamp(position.z, minB, maxB);
 
     float terrainNew = world->GetHeight(position.x, position.z);
-    if (terrainNew <= Config::World::WATER_LEVEL) {
-        position.y = Config::World::WATER_LEVEL + 0.05f;
+    if (terrainNew <= world->GetCurrentWaterLevel()) {
+        position.y = world->GetCurrentWaterLevel() + 0.05f;
         if (!wasInWater) wasInWater = true;
         swimSplashTimer -= deltaTime;
         if (swimSplashTimer <= 0.0f) {
@@ -171,7 +179,7 @@ void Wolf::TryStartPounce(float distToPrey, World* world) {
     if (pounceCooldownTimer > 0.0f) return;
     if (distToPrey > Config::Wolf::POUNCE_RANGE) return;
     if (shakeTimer > 0.0f) return;
-    if (world->GetHeight(position.x, position.z) <= Config::World::WATER_LEVEL) return;
+    if (world->GetHeight(position.x, position.z) <= world->GetCurrentWaterLevel()) return;
 
     pounceTimer         = Config::Wolf::POUNCE_DURATION;
     pounceCooldownTimer = FullCooldown();
@@ -311,6 +319,19 @@ Sheep* Wolf::FindNearestSheepInRadius(World* world, float radius) const {
     return best;
 }
 
+Carcass* Wolf::FindNearestCarcassInRadius(World* world, float radius) const {
+    Carcass* best = nullptr;
+    float bestDist = radius;
+    for (const auto& entity : world->GetEntities()) {
+        if (!entity->IsAlive()) continue;
+        Carcass* c = dynamic_cast<Carcass*>(entity.get());
+        if (!c) continue;
+        float d = Vector3Distance(position, c->GetPosition());
+        if (d < bestDist) { bestDist = d; best = c; }
+    }
+    return best;
+}
+
 Wolf* Wolf::FindEnemyWolfNearby(World* world) const {
     // Только ADULT/MEDIUM, той же возрастной категории (BABY не дерутся)
     if (ageStage == Config::Wolf::AgeStage::BABY) return nullptr;
@@ -348,7 +369,7 @@ void Wolf::PickNewPatrolTarget(World* world) {
         tx = Clamp(tx, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
         tz = Clamp(tz, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
         float ty = world->GetHeight(tx, tz);
-        if (ty > Config::World::WATER_LEVEL) {
+        if (ty > world->GetCurrentWaterLevel()) {
             targetPosition = { tx, ty, tz };
             return;
         }
@@ -382,97 +403,176 @@ void Wolf::UpdateWander(float dt, World* world) {
 // =====================================================================
 
 void Wolf::UpdateHunt(float dt, World* world) {
-    // Ищем БЛИЖАЙШУЮ овцу в радиусе охоты
-    Sheep* prevTarget = targetPrey;
-    targetPrey = FindNearestSheepInRadius(world, CurrentHuntingRadius());
+    float huntR = CurrentHuntingRadius();
 
-    if (targetPrey != prevTarget) hasPrevPreyPos = false;
+    // ════════════════════════════════════════════════════════════════
+    // ПРИОРИТЕТ 1: ТРУП. Самый высокий — волки идут к нему первым делом.
+    // На трупы НЕ прыгают, просто подходят и едят.
+    // ════════════════════════════════════════════════════════════════
+    Carcass* nearestCarcass = FindNearestCarcassInRadius(world, huntR);
+    if (nearestCarcass) {
+        Vector3 carcPos = nearestCarcass->GetPosition();
+        targetPosition  = carcPos;
 
-    if (!targetPrey) {
-        // Жертв в радиусе нет — возвращаемся в патруль (домой)
-        hasPrevPreyPos = false;
-        PickNewPatrolTarget(world);
-        state = AnimalState::WANDERING;
+        // Пока бежим к трупу — никаких прыжков
+        MoveSwimming(dt, world);
+
+        float dist = Vector3Distance(position, carcPos);
+        if (dist < 1.5f) {
+            // Едим труп
+            float nutrition = nearestCarcass->GetNutrition();
+            bool rotten     = nearestCarcass->IsRotten();
+
+            hunger = fminf(hunger + nutrition, 100.0f);
+
+            // Партиклы поедания (тёмно-красные брызги + куски)
+            Vector3 fp = carcPos; fp.y += 0.3f;
+            world->SpawnParticles(fp, (Color){140, 60, 50, 255}, 10, false);
+            world->SpawnParticles(fp, (Color){90, 70, 50, 255}, 6,  false);
+
+            nearestCarcass->Die();
+
+            // 50% шанс отравления от несвежего трупа
+            if (rotten && GetRandomValue(0, 99) < 50) {
+                // Зелёные «гнилостные» партиклы + смерть
+                world->SpawnParticles(position, (Color){80, 130, 60, 255}, 18, false);
+                world->SpawnParticles(position, (Color){60, 90, 40, 255}, 10, false);
+                Die();
+                return;
+            }
+
+            // После еды — снова приоритеты: есть ли ещё пища рядом?
+            // (на следующем тике HUNGRY сам пересчитает)
+            if (hunger >= 90.0f) {
+                // Достаточно сыт — возврат домой
+                targetPosition = {
+                    homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
+                };
+                state = AnimalState::WANDERING;
+            }
+            // Иначе остаёмся в HUNGRY и продолжаем искать
+        }
         return;
     }
 
-    // Преследование с упреждением
-    Vector3 preyPos = targetPrey->GetPosition();
-    float closestDistance = Vector3Distance(position, preyPos);
+    // ════════════════════════════════════════════════════════════════
+    // ПРИОРИТЕТ 2: ОВЦА. Активная охота — преследование, прыжок.
+    // ════════════════════════════════════════════════════════════════
+    Sheep* prevTarget = targetPrey;
+    targetPrey = FindNearestSheepInRadius(world, huntR);
 
-    Vector3 leadPos = preyPos;
-    float leadT = CurrentLeadTime();
-    if (hasPrevPreyPos && dt > 0.001f) {
-        Vector3 preyVel = {
-            (preyPos.x - prevPreyPos.x) / dt, 0.0f,
-            (preyPos.z - prevPreyPos.z) / dt
-        };
-        float t = closestDistance / fmaxf(speed, 0.1f);
-        if (t > leadT) t = leadT;
-        leadPos.x = preyPos.x + preyVel.x * t;
-        leadPos.z = preyPos.z + preyVel.z * t;
-        leadPos.y = world->GetHeight(leadPos.x, leadPos.z);
-    }
-    prevPreyPos = preyPos;
-    hasPrevPreyPos = true;
+    if (targetPrey != prevTarget) hasPrevPreyPos = false;
 
-    targetPosition = leadPos;
+    if (targetPrey) {
+        Vector3 preyPos = targetPrey->GetPosition();
+        float closestDistance = Vector3Distance(position, preyPos);
 
-    TryStartPounce(closestDistance, world);
-    MoveSwimming(dt, world);
+        Vector3 leadPos = preyPos;
+        float leadT = CurrentLeadTime();
+        if (hasPrevPreyPos && dt > 0.001f) {
+            Vector3 preyVel = {
+                (preyPos.x - prevPreyPos.x) / dt, 0.0f,
+                (preyPos.z - prevPreyPos.z) / dt
+            };
+            float t = closestDistance / fmaxf(speed, 0.1f);
+            if (t > leadT) t = leadT;
+            leadPos.x = preyPos.x + preyVel.x * t;
+            leadPos.z = preyPos.z + preyVel.z * t;
+            leadPos.y = world->GetHeight(leadPos.x, leadPos.z);
+        }
+        prevPreyPos = preyPos;
+        hasPrevPreyPos = true;
 
-    float reach = (pounceTimer > 0.0f)
-                  ? CurrentPounceReach()
-                  : Config::Wolf::ATTACK_RADIUS;
-    if (ageStage == Config::Wolf::AgeStage::ADULT) {
-        reach = fmaxf(reach, Config::Wolf::ADULT_POUNCE_REACH);
-    }
+        targetPosition = leadPos;
+        TryStartPounce(closestDistance, world);
+        MoveSwimming(dt, world);
 
-    float distAfter = Vector3Distance(position, targetPrey->GetPosition());
-    if (distAfter < reach) {
-        // Убийство
-        Vector3 killPos = targetPrey->GetPosition();
-        killPos.y += 0.5f;
-        world->SpawnParticles(killPos, (Color){200, 30, 30, 255}, 20, false);
-        world->SpawnParticles(killPos, (Color){120, 10, 10, 255}, 10, false);
-        targetPrey->Die();
+        float reach = (pounceTimer > 0.0f)
+                      ? CurrentPounceReach()
+                      : Config::Wolf::ATTACK_RADIUS;
+        if (ageStage == Config::Wolf::AgeStage::ADULT) {
+            reach = fmaxf(reach, Config::Wolf::ADULT_POUNCE_REACH);
+        }
 
-        if (ageStage == Config::Wolf::AgeStage::BABY) {
-            babyKillCount++;
-            hunger = fminf(hunger + 50.0f, 100.0f);
-            if (babyKillCount >= Config::Wolf::BABY_KILLS_TO_FULL) {
-                babyKillCount = 0;
+        float distAfter = Vector3Distance(position, targetPrey->GetPosition());
+        if (distAfter < reach) {
+            Vector3 killPos = targetPrey->GetPosition();
+            killPos.y += 0.5f;
+            world->SpawnParticles(killPos, (Color){200, 30, 30, 255}, 20, false);
+            world->SpawnParticles(killPos, (Color){120, 10, 10, 255}, 10, false);
+            targetPrey->Die();
+
+            if (ageStage == Config::Wolf::AgeStage::BABY) {
+                babyKillCount++;
+                hunger = fminf(hunger + 50.0f, 100.0f); // 5/10
+                if (babyKillCount >= Config::Wolf::BABY_KILLS_TO_FULL) {
+                    babyKillCount = 0;
+                    pounceCooldownTimer = FullCooldown();
+                    state = AnimalState::WANDERING;
+                    PickNewPatrolTarget(world);
+                } else {
+                    pounceCooldownTimer = Config::Wolf::POUNCE_COOLDOWN * 0.5f;
+                }
+            } else {
+                hunger = fminf(hunger + 50.0f, 100.0f); // 5/10
                 pounceCooldownTimer = FullCooldown();
-                state = AnimalState::WANDERING;
-                PickNewPatrolTarget(world);
-            } else {
-                pounceCooldownTimer = Config::Wolf::POUNCE_COOLDOWN * 0.5f;
-                // Остаёмся в HUNGRY — ищет вторую жертву
-            }
-        } else {
-            hunger = 100.0f;
-            pounceCooldownTimer = FullCooldown();
 
-            // Есть ли ещё овцы поблизости? Если да — продолжаем охоту.
-            // Если нет — возвращаемся домой.
-            Sheep* nextPrey = FindNearestSheepInRadius(world, CurrentHuntingRadius());
-            if (nextPrey) {
-                targetPrey = nextPrey;
-                hasPrevPreyPos = false;
-                // Остаёмся в HUNGRY
-            } else {
-                // Цель — точка возле дома (а не случайный патруль)
+                if (hunger < 90.0f) {
+                    // Ещё голодны после одной овцы — ищем ещё
+                    // (на следующем тике HUNGRY переоценит приоритеты)
+                } else {
+                    targetPosition = {
+                        homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
+                    };
+                    state = AnimalState::WANDERING;
+                }
+            }
+
+            targetPrey = nullptr;
+            hasPrevPreyPos = false;
+            pounceTimer = 0.0f;
+        }
+        return;
+    }
+
+    // ════════════════════════════════════════════════════════════════
+    // ПРИОРИТЕТ 3: ТРАВА. Только когда и трупов, и овец нет рядом.
+    // На траву НЕ прыгают. При сильном голоде ищем шире.
+    // ════════════════════════════════════════════════════════════════
+    float grassR = huntR;
+    if (hunger < Config::Wolf::DESPERATE_HUNGER) {
+        // Очень голодный — ищет траву далеко
+        grassR = fmaxf(grassR, Config::Wolf::GRASS_DESPERATE_RADIUS);
+    }
+    Vector3 grassPos;
+    Config::Grass::Type grassType;
+    int grassIdx = world->FindNearestGrass(position, grassR, grassPos, grassType);
+    if (grassIdx >= 0) {
+        targetPosition = grassPos;
+        MoveSwimming(dt, world);
+
+        Vector2 fp = { position.x, position.z };
+        Vector2 fg = { grassPos.x, grassPos.z };
+        if (Vector2Distance(fp, fg) < 1.0f) {
+            world->EatGrass(grassIdx);  // зелёные партиклы уже спавнятся в EatGrass
+            hunger = fminf(hunger + 10.0f, 100.0f); // 1/10
+            // Эффект травы: голод теперь падает быстрее на 30 сек
+            grassEffectTimer = Config::Wolf::GRASS_EFFECT_DURATION;
+
+            if (hunger >= 70.0f) {
                 targetPosition = {
                     homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
                 };
                 state = AnimalState::WANDERING;
             }
         }
-
-        targetPrey = nullptr;
-        hasPrevPreyPos = false;
-        pounceTimer = 0.0f;
+        return;
     }
+
+    // Совсем ничего нет — возврат домой
+    hasPrevPreyPos = false;
+    targetPosition = { homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z };
+    state = AnimalState::WANDERING;
 }
 
 // =====================================================================
@@ -535,8 +635,13 @@ void Wolf::Update(float deltaTime, World* world) {
     if (matingCooldownTimer > 0.0f)  matingCooldownTimer  -= deltaTime;
     if (fightCooldownTimer  > 0.0f)  fightCooldownTimer   -= deltaTime;
 
-    // 3. Голод
-    hunger -= Config::Wolf::HUNGER_DECAY_RATE * deltaTime;
+    // 3. Голод. После еды травы decay умножается на GRASS_HUNGER_MULT
+    float decayRate = Config::Wolf::HUNGER_DECAY_RATE;
+    if (grassEffectTimer > 0.0f) {
+        grassEffectTimer -= deltaTime;
+        decayRate *= Config::Wolf::GRASS_HUNGER_MULT;
+    }
+    hunger -= decayRate * deltaTime;
     if (hunger < 0.0f) hunger = 0.0f;
 
     // 4. Смерть от голода
@@ -603,34 +708,41 @@ void Wolf::Update(float deltaTime, World* world) {
         if (mateTarget) {
             // Снап к рельефу
             float th = world->GetHeight(position.x, position.z);
-            if (th > Config::World::WATER_LEVEL) position.y = th;
+            if (th > world->GetCurrentWaterLevel()) position.y = th;
             return;
         }
     }
 
-    // 10. Принудительный переход в охоту при сильном голоде,
-    // НО только если жертва есть в радиусе (иначе продолжаем патруль)
+    // 10. Принудительный переход в охоту при сильном голоде (< 50 = 5/10),
+    // НО только если еда есть в радиусе. Иначе продолжаем патруль.
     if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER
         && state != AnimalState::HUNGRY
         && state != AnimalState::FIGHTING
         && !isMating)
     {
-        Sheep* found = FindNearestSheepInRadius(world, CurrentHuntingRadius());
-        if (found) {
+        if (FindNearestCarcassInRadius(world, CurrentHuntingRadius())
+            || FindNearestSheepInRadius(world, CurrentHuntingRadius()))
+        {
             state = AnimalState::HUNGRY;
-            targetPrey = found;
         }
     }
 
-    // 11. Пассивное обнаружение во время патруля (даже если сыт):
-    // волк замечает овцу и переходит в охоту
-    if ((state == AnimalState::IDLE || state == AnimalState::WANDERING)
-        && hunger < 95.0f)
+    // 11. Пассивное обнаружение во время патруля:
+    // — На ТРУП реагируют всегда (легкая добыча)
+    // — На ОВЦУ только если голодны (< HUNGER_HUNT_TRIGGER)
+    if ((state == AnimalState::IDLE || state == AnimalState::WANDERING))
     {
-        Sheep* found = FindNearestSheepInRadius(world, CurrentHuntingRadius());
-        if (found) {
+        // Труп — всегда (даже сытый волк не упустит готовую еду)
+        if (FindNearestCarcassInRadius(world, CurrentHuntingRadius())) {
             state = AnimalState::HUNGRY;
-            targetPrey = found;
+        }
+        // Овцы — только если хочется есть
+        else if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
+            Sheep* found = FindNearestSheepInRadius(world, CurrentHuntingRadius());
+            if (found) {
+                state = AnimalState::HUNGRY;
+                targetPrey = found;
+            }
         }
     }
 
@@ -643,9 +755,16 @@ void Wolf::Update(float deltaTime, World* world) {
         case AnimalState::FLEEING:  state = AnimalState::WANDERING; break;
     }
 
-    // 13. Снап к рельефу
+    // 13. Снап к рельефу и удержание в границах карты
+    {
+        const int halfMap = Config::World::MAP_SIZE / 2;
+        const float minB = -(float)halfMap + 2.0f;
+        const float maxB =  (float)halfMap - 2.0f;
+        position.x = Clamp(position.x, minB, maxB);
+        position.z = Clamp(position.z, minB, maxB);
+    }
     float th = world->GetHeight(position.x, position.z);
-    if (th > Config::World::WATER_LEVEL) position.y = th;
+    if (th > world->GetCurrentWaterLevel()) position.y = th;
 }
 
 // =====================================================================

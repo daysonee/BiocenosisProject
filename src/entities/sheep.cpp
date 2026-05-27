@@ -5,6 +5,8 @@
 #include <raymath.h>
 #include "../core/constants.hpp"
 #include <cmath>
+#include <vector>
+#include <algorithm>
 
 // Радиус блуждания вокруг центра стада.
 // 80 единиц — разумный масштаб для MAP_SIZE=1000.
@@ -28,7 +30,7 @@ void Sheep::PickNewWanderTarget(World* world) {
         float tz = Clamp(flockCenter.z + sinf(angle) * radius,
                          -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
         float ty = world->GetHeight(tx, tz);
-        if (ty > Config::World::WATER_LEVEL) {
+        if (ty > world->GetCurrentWaterLevel()) {
             targetPosition = { tx, ty, tz };
             return;
         }
@@ -40,7 +42,7 @@ void Sheep::PickNewWanderTarget(World* world) {
         float tz = Clamp(position.z + (float)GetRandomValue(-80, 80) * 0.5f,
                          -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
         float ty = world->GetHeight(tx, tz);
-        if (ty > Config::World::WATER_LEVEL) {
+        if (ty > world->GetCurrentWaterLevel()) {
             targetPosition = { tx, ty, tz };
             return;
         }
@@ -56,7 +58,7 @@ void Sheep::ForceEscape(World* world) {
                          -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
         float nz = Clamp(position.z + sinf(angle) * pushLen,
                          -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-        if (world->GetHeight(nx, nz) > Config::World::WATER_LEVEL) {
+        if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
             position.x = nx;
             position.z = nz;
             position.y = world->GetHeight(nx, nz);
@@ -125,6 +127,38 @@ void Sheep::Update(float deltaTime, World* world) {
     if (matingCooldownTimer > 0.0f) matingCooldownTimer -= deltaTime;
     if (dodgeCooldownTimer  > 0.0f) dodgeCooldownTimer  -= deltaTime;
 
+    // Динамический flockCenter: овца "вступает" в ближайшее стадо
+    flockUpdateTimer -= deltaTime;
+    if (flockUpdateTimer <= 0.0f) {
+        flockUpdateTimer = 5.0f;
+        // Считаем центр массы 5 ближайших овец
+        struct Pair { Sheep* s; float d; };
+        std::vector<Pair> nearest;
+        for (const auto& entity : world->GetEntities()) {
+            if (!entity->IsAlive() || entity.get() == this) continue;
+            Sheep* s = dynamic_cast<Sheep*>(entity.get());
+            if (!s) continue;
+            float d = Vector3Distance(position, s->GetPosition());
+            if (d < 25.0f) nearest.push_back({s, d});
+        }
+        // Топ-5 ближайших
+        std::sort(nearest.begin(), nearest.end(),
+                  [](const Pair& a, const Pair& b){ return a.d < b.d; });
+        if ((int)nearest.size() > 5) nearest.resize(5);
+
+        if (nearest.size() >= 3) {
+            Vector3 sum = { 0.0f, 0.0f, 0.0f };
+            for (auto& p : nearest) {
+                sum.x += p.s->GetPosition().x;
+                sum.z += p.s->GetPosition().z;
+            }
+            sum.x /= nearest.size();
+            sum.z /= nearest.size();
+            sum.y = world->GetHeight(sum.x, sum.z);
+            flockCenter = sum;
+        }
+    }
+
     // ── 2. ВОЗРАСТ ───────────────────────────────────────────────────────────
     ageTimer += deltaTime;
     if (ageTimer >= maxAgeInCurrentStage) {
@@ -146,7 +180,9 @@ void Sheep::Update(float deltaTime, World* world) {
     }
 
     // ── 3. ОБНАРУЖЕНИЕ УГРОЗ ─────────────────────────────────────────────────
-    if (targetHunter != nullptr && !targetHunter->IsAlive()) targetHunter = nullptr;
+    // Сбрасываем каждый тик и ищем заново (OnEntityDying гарантирует что
+    // указатель не dangling, но защищаемся ещё и пересчётом).
+    targetHunter = nullptr;
 
     bool wolfNearby = false;
     Wolf* closestWolf = nullptr;
@@ -172,9 +208,12 @@ void Sheep::Update(float deltaTime, World* world) {
         mateTarget = nullptr;
         state      = AnimalState::FLEEING;
     } else if (state == AnimalState::FLEEING) {
-        targetHunter = nullptr;
-        state        = AnimalState::IDLE;
-        stateTimer   = 1.5f;
+        targetHunter     = nullptr;
+        state            = AnimalState::IDLE;
+        stateTimer       = 1.5f;
+        // Сбрасываем застрявшие финт-таймеры
+        lockedFleeTimer  = 0.0f;
+        dodgeBoostTimer  = 0.0f;
     } else if (hunger < myHungerThreshold) {
         // Голодная — прерываем мейтинг
         if (isMating) {
@@ -210,8 +249,12 @@ void Sheep::Update(float deltaTime, World* world) {
 
         // Идём к партнёру / ждём рядом
         if (mateTarget) {
-            // Партнёр умер или передумал
-            if (!mateTarget->IsAlive() || mateTarget->hunger < Config::Sheep::MATING_HUNGER_THRESHOLD) {
+            // Партнёр уже мёртв или передумал. Проверка IsAlive() безопасна,
+            // т.к. OnEntityDying очистил бы указатель если уже удалён.
+            if (!mateTarget->IsAlive()) {
+                isMating = false; matingProgressTimer = 0.0f;
+                mateTarget = nullptr;
+            } else if (mateTarget->hunger < Config::Sheep::MATING_HUNGER_THRESHOLD) {
                 isMating = false; matingProgressTimer = 0.0f;
                 mateTarget->isMating    = false;
                 mateTarget->mateTarget  = nullptr;
@@ -309,38 +352,36 @@ void Sheep::Update(float deltaTime, World* world) {
 
                 float distToWolf = Vector3Distance(position, targetHunter->GetPosition());
 
-                // ── 2. БЕГ К СТАДУ (если соседи в стороне от волка) ──
-                // Этот блок работает ТОЛЬКО когда направление НЕ залочено финтом
+                // ── 2. РАЗБЕГАНИЕ ОТ БЛИЖАЙШЕЙ ОВЦЫ ─────────────────
+                // При панике овцы РАЗБЕГАЮТСЯ в разные стороны
+                // (а не группируются). Это создаёт хаос и даёт шанс
+                // переместиться в чужое стадо.
                 if (lockedFleeTimer <= 0.0f) {
-                    Vector3 flockCenterPos = { 0.0f, 0.0f, 0.0f };
-                    int neighborCount = 0;
+                    Vector3 nearestNeighborPos = position;
+                    float nearestDist = 99999.0f;
+                    bool foundNeighbor = false;
                     for (const auto& entity : world->GetEntities()) {
                         if (!entity->IsAlive() || entity.get() == this) continue;
                         Sheep* neighbor = dynamic_cast<Sheep*>(entity.get());
                         if (!neighbor) continue;
                         float d = Vector3Distance(position, neighbor->GetPosition());
-                        if (d < Config::Sheep::FLOCK_SUPPORT_RADIUS) {
-                            flockCenterPos.x += neighbor->GetPosition().x;
-                            flockCenterPos.z += neighbor->GetPosition().z;
-                            ++neighborCount;
+                        if (d < nearestDist && d < 4.0f) {
+                            nearestDist = d;
+                            nearestNeighborPos = neighbor->GetPosition();
+                            foundNeighbor = true;
                         }
                     }
-                    if (neighborCount >= 2) {
-                        flockCenterPos.x /= neighborCount;
-                        flockCenterPos.z /= neighborCount;
-                        Vector3 toFlock = {
-                            flockCenterPos.x - position.x, 0.0f,
-                            flockCenterPos.z - position.z
+                    if (foundNeighbor && nearestDist > 0.1f) {
+                        // Отталкивание от ближайшей овцы — лёгкое смещение
+                        Vector3 awayFromNeighbor = {
+                            position.x - nearestNeighborPos.x, 0.0f,
+                            position.z - nearestNeighborPos.z
                         };
-                        if (Vector3Length(toFlock) > 0.5f) {
-                            toFlock = Vector3Normalize(toFlock);
-                            if (Vector3DotProduct(fromWolf, toFlock) > 0.0f) {
-                                float w = Config::Sheep::FLOCK_SUPPORT_WEIGHT;
-                                fromWolf.x = fromWolf.x * (1.0f - w) + toFlock.x * w;
-                                fromWolf.z = fromWolf.z * (1.0f - w) + toFlock.z * w;
-                                fromWolf = Vector3Normalize(fromWolf);
-                            }
-                        }
+                        awayFromNeighbor = Vector3Normalize(awayFromNeighbor);
+                        float w = 0.25f;  // слабее чем основное направление
+                        fromWolf.x = fromWolf.x * (1.0f - w) + awayFromNeighbor.x * w;
+                        fromWolf.z = fromWolf.z * (1.0f - w) + awayFromNeighbor.z * w;
+                        fromWolf = Vector3Normalize(fromWolf);
                     }
                 }
 
@@ -569,7 +610,10 @@ void Sheep::Update(float deltaTime, World* world) {
     // ── 8. РЕЛЬЕФ + УТОПАНИЕ ─────────────────────────────────────────────────
     position.y = world->GetHeight(position.x, position.z);
 
-    if (position.y <= Config::World::WATER_LEVEL) {
+    // Утопание с учётом приливов: при подъёме уровня воды
+    // прибрежные овцы оказываются в воде и тонут.
+    float waterLvl = world->GetCurrentWaterLevel();
+    if (position.y <= waterLvl) {
         health -= 20.0f * deltaTime;
         if (health <= 0.0f) Die();
     } else {

@@ -57,6 +57,15 @@ private:
 
     int plantCount, sheepCount, wolfCount;
 
+    // ── ПРИЛИВЫ ──────────────────────────────────────────────────
+    // Во время дождя вода поднимается за 30 сек,
+    // после окончания дождя возвращается за 60 сек.
+    float waterLevelOffset = 0.0f;   // текущее смещение от базового WATER_LEVEL
+    float tideSourceOffset = 0.0f;
+    float tideTargetOffset = 0.0f;
+    float tideElapsed      = 0.0f;
+    float tideDuration     = 1.0f;   // 30 для прилива, 60 для отлива
+
     void ChangeWeather();
     void GenerateTerrainMesh();
 
@@ -77,6 +86,9 @@ public:
 
     float GetHeight(float x, float z) const;
     Color GetBiomeColor(float height) const;
+
+    // Текущий уровень воды с учётом приливов
+    float GetCurrentWaterLevel() const { return Config::World::WATER_LEVEL + waterLevelOffset; }
 
     void SpawnParticles(Vector3 pos, Color color, int count, bool isHeart);
     void UpdateParticles(float deltaTime);

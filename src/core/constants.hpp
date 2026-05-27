@@ -29,6 +29,11 @@ namespace Config {
         constexpr float PLANT_LEVEL      = 65.0f;
         constexpr int   TREE_COUNT       = 5000;
         constexpr int   BUSH_COUNT      = 1000; // (legacy, не используется)
+
+        // ── ПРИЛИВЫ ──────────────────────────────────────────────
+        constexpr float TIDE_RISE_AMOUNT   = 5.0f;   // на сколько повышается уровень
+        constexpr float TIDE_RISE_DURATION = 30.0f;  // ramp up за 30 сек
+        constexpr float TIDE_FALL_DURATION = 60.0f;  // ramp down за 60 сек
     }
 
     namespace Grass {
@@ -185,7 +190,15 @@ namespace Config {
         // ── ГОЛОД И СМЕРТЬ ────────────────────────────────────────
         constexpr float HUNGER_DECAY_RATE = 1.0f;   // ед/сек — было 2.0, теперь как у овец
         constexpr float STARVATION_LIMIT  = 30.0f;  // 30 сек на нуле = смерть (было 15)
-        constexpr float HUNGER_HUNT_TRIGGER = 65.0f; // ниже этого активно ищем жертв
+        constexpr float HUNGER_HUNT_TRIGGER = 50.0f; // 5/10 — порог активной охоты
+
+        // Трава — плохая еда для волка: после её поедания
+        // голод падает быстрее на короткое время
+        constexpr float GRASS_EFFECT_DURATION = 30.0f;  // длительность эффекта
+        constexpr float GRASS_HUNGER_MULT     = 2.5f;   // умножение decay
+        // Когда волк очень голоден — расширяем радиус поиска травы
+        constexpr float DESPERATE_HUNGER      = 30.0f;  // 3/10
+        constexpr float GRASS_DESPERATE_RADIUS = 60.0f;
 
         // ── ДОМ СТАИ (патрулирование своей зоны) ─────────────────
         constexpr float HOME_PATROL_RADIUS = 70.0f;

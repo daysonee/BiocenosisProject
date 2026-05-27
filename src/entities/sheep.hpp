@@ -31,6 +31,10 @@ private:
     Vector3 posAtLastCheck  = {};
     int     stuckCount      = 0;
 
+    // Каждые ~5 сек овца пересчитывает свой flockCenter по соседям.
+    // Это позволяет перемещаться между стадами после побега.
+    float   flockUpdateTimer = 5.0f;
+
     void PickNewWanderTarget(World* world);
     void ForceEscape(World* world);
 
@@ -68,4 +72,10 @@ public:
 
     void SetFlockCenter(Vector3 center) { flockCenter = center; }
     Color GetDeathColor() const override { return LIGHTGRAY; }
+
+    // Очистка dangling pointers перед удалением dying-сущности
+    void OnEntityDying(Entity* dying) override {
+        if (targetHunter == dying) targetHunter = nullptr;
+        if (mateTarget == dying)   mateTarget   = nullptr;
+    }
 };
