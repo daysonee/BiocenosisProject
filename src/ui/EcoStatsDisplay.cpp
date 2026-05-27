@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "EcoStatsDisplay.hpp"
 #include <cstdio>
 
@@ -102,7 +103,7 @@ void EcoStatsDisplay::Draw() const {
         posX, yOffset, fontSize, balanceColor);
     yOffset += lineHeight + 6;
 
-    DrawText(TextFormat("Sheep eaten: %d", sheepEatenCount),
+    DrawText(TextFormat("Sheep died: %d", sheepEatenCount),
         posX, yOffset, fontSize, ORANGE);
     yOffset += lineHeight;
 

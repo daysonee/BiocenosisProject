@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "crab.hpp"
 #include "../core/world.hpp"
 #include <raymath.h>

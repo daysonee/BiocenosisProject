@@ -10,6 +10,8 @@
 #include "camera/CameraSpawn.hpp"
 #include "camera/CameraController.hpp"
 #include "ui/EcoStatsDisplay.hpp"
+#include "entities/crab.hpp"
+#include "ui/MainMenu.hpp"
 #include <memory>
 #include <cmath>
 
@@ -65,35 +67,31 @@ void SpawnWolfPacksInForest(World& world) {
 }
 
 // СПАВН ОВЕЦ СТАДАМИ ИСКЛЮЧИТЕЛЬНО НА ЯРКО-ЗЕЛЕНЫХ ЛУГАХ
-void SpawnSheepSmartAndLogical(World& world) {
+void SpawnSheepSmartAndLogical(World& world, int countToSpawn) {
     const int halfMap = Config::World::MAP_SIZE / 2;
-    const int totalSheepToSpawn = Config::Sheep::INITIAL_COUNT;
     int spawnedCount = 0;
 
     const int   minFlockSize = 3;
     const int   maxFlockSize = 6;
     const int   maxFlockAttempts = 3000;
 
-    // Луга: выше леса (BIOME_THRESHOLD=35) и ниже гор (PLANT_LEVEL=65).
-    // Деревья растут ТОЛЬКО до BIOME_THRESHOLD, так что здесь их нет совсем.
-    const float MEADOW_MIN = Config::World::BIOME_THRESHOLD;   // 35.0
-    const float MEADOW_MAX = Config::World::PLANT_LEVEL;        // 65.0
+    const float MEADOW_MIN = Config::World::BIOME_THRESHOLD;
+    const float MEADOW_MAX = Config::World::PLANT_LEVEL;
 
-    for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < totalSheepToSpawn; ++attempt) {
+    for (int attempt = 0; attempt < maxFlockAttempts && spawnedCount < countToSpawn; ++attempt) {
         float cx = (float)GetRandomValue(-halfMap, halfMap);
         float cz = (float)GetRandomValue(-halfMap, halfMap);
         float cy = world.GetHeight(cx, cz);
 
-        // Только открытые луга (без деревьев по определению биома)
         if (cy <= MEADOW_MIN || cy > MEADOW_MAX) continue;
 
         const int currentFlockSize = GetRandomValue(minFlockSize, maxFlockSize);
         const Vector3 flockCenter = { cx, cy, cz };
 
         for (int i = 0; i < currentFlockSize; ++i) {
-            if (spawnedCount >= totalSheepToSpawn) break;
+            if (spawnedCount >= countToSpawn) break;
 
-            float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
+            float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
             float radius = (float)GetRandomValue(10, (int)(Config::Sheep::SPAWN_FLOCK_RADIUS * 10)) / 10.0f;
 
             float sx = cx + cosf(angle) * radius;
@@ -103,26 +101,24 @@ void SpawnSheepSmartAndLogical(World& world) {
 
             float sy = world.GetHeight(sx, sz);
 
-            // Каждая овца тоже должна быть на лугу
             if (sy <= MEADOW_MIN || sy > MEADOW_MAX) continue;
 
-            auto sheep = std::make_unique<Sheep>((Vector3){ sx, sy, sz });
+            auto sheep = std::make_unique<Sheep>((Vector3) { sx, sy, sz });
             sheep->SetFlockCenter(flockCenter);
             world.AddEntity(std::move(sheep));
             ++spawnedCount;
         }
     }
 
-    // Резервный спавн — те же ограничения по биому
-    if (spawnedCount < totalSheepToSpawn) {
+    if (spawnedCount < countToSpawn) {
         int fallbackAttempts = 2000;
-        while (spawnedCount < totalSheepToSpawn && fallbackAttempts-- > 0) {
+        while (spawnedCount < countToSpawn && fallbackAttempts-- > 0) {
             float rx = (float)GetRandomValue(-halfMap, halfMap);
             float rz = (float)GetRandomValue(-halfMap, halfMap);
             float ry = world.GetHeight(rx, rz);
 
             if (ry > MEADOW_MIN && ry <= MEADOW_MAX) {
-                auto sheep = std::make_unique<Sheep>((Vector3){ rx, ry, rz });
+                auto sheep = std::make_unique<Sheep>((Vector3) { rx, ry, rz });
                 sheep->SetFlockCenter({ rx, ry, rz });
                 world.AddEntity(std::move(sheep));
                 ++spawnedCount;
@@ -131,38 +127,165 @@ void SpawnSheepSmartAndLogical(World& world) {
     }
 }
 
+void SpawnWolves(World& world, int countToSpawn) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    int spawned = 0;
+    int attempts = 2000;
+
+    for (int i = 0; i < attempts && spawned < countToSpawn; ++i) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = world.GetHeight(rx, rz);
+
+        if (ry > Config::World::WATER_LEVEL) {
+            world.AddEntity(std::make_unique<Wolf>((Vector3) { rx, ry, rz }));
+            spawned++;
+        }
+    }
+}
+
+void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    int spawned = 0;
+    int attempts = 3000;
+
+    for (int i = 0; i < attempts && spawned < countToSpawn; ++i) {
+        float rx = (float)GetRandomValue(-halfMap, halfMap);
+        float rz = (float)GetRandomValue(-halfMap, halfMap);
+        float ry = world.GetHeight(rx, rz);
+
+        if (ry >= Config::World::WATER_LEVEL && ry <= Config::World::SAND_LEVEL) {
+            world.AddEntity(std::make_unique<Crab>((Vector3) { rx, ry, rz }));
+            spawned++;
+        }
+    }
+}
+
+// ========== СИСТЕМА ФИКСИРОВАННЫХ КАМЕР ==========
+struct FixedCamera {
+    Vector3 position;
+    Vector3 target;
+    const char* name;
+};
+
+const FixedCamera fixedCameras[] = {
+    { { 0.0f, 80.0f, -150.0f }, { 0.0f, 30.0f, 0.0f }, "OVERVIEW" },
+    { { -200.0f, 50.0f, -100.0f }, { -150.0f, 30.0f, -80.0f }, "WEST FOREST" },
+    { { 200.0f, 50.0f, -100.0f }, { 150.0f, 30.0f, -80.0f }, "EAST FOREST" },
+    { { -100.0f, 40.0f, 150.0f }, { -80.0f, 25.0f, 100.0f }, "SOUTH BEACH" },
+    { { 100.0f, 60.0f, 120.0f }, { 80.0f, 35.0f, 80.0f }, "NORTH MEADOW" },
+    { { 0.0f, 90.0f, -80.0f }, { 0.0f, 20.0f, 0.0f }, "CENTER" }
+};
+
+const int FIXED_CAMERA_COUNT = sizeof(fixedCameras) / sizeof(fixedCameras[0]);
+
+class FixedCameraSystem {
+private:
+    int currentCameraIndex = 0;
+    bool isActive = false;
+    Camera3D savedCamera;
+    bool hasSavedCamera = false;
+
+public:
+    void Activate(const Camera3D& currentCamera) {
+        if (!isActive) {
+            savedCamera = currentCamera;
+            hasSavedCamera = true;
+            isActive = true;
+            currentCameraIndex = 0;
+        }
+    }
+
+    void Deactivate() {
+        isActive = false;
+    }
+
+    bool IsActive() const {
+        return isActive;
+    }
+
+    void NextCamera() {
+        if (isActive) {
+            currentCameraIndex = (currentCameraIndex + 1) % FIXED_CAMERA_COUNT;
+        }
+    }
+
+    void PrevCamera() {
+        if (isActive) {
+            currentCameraIndex = (currentCameraIndex - 1 + FIXED_CAMERA_COUNT) % FIXED_CAMERA_COUNT;
+        }
+    }
+
+    void ApplyToCamera(Camera3D& camera) {
+        if (isActive) {
+            const FixedCamera& fc = fixedCameras[currentCameraIndex];
+            camera.position = fc.position;
+            camera.target = fc.target;
+        }
+    }
+
+    void RestoreSavedCamera(Camera3D& camera) {
+        if (hasSavedCamera) {
+            camera = savedCamera;
+            hasSavedCamera = false;
+        }
+    }
+
+    const char* GetCurrentCameraName() const {
+        if (isActive) {
+            return fixedCameras[currentCameraIndex].name;
+        }
+        return "";
+    }
+
+    int GetCurrentIndex() const {
+        return currentCameraIndex;
+    }
+};
+
 int main() {
-    SetConfigFlags(FLAG_WINDOW_HIGHDPI | FLAG_FULLSCREEN_MODE);
-
-    int currentMonitor = GetCurrentMonitor();
-    int screenWidth = GetMonitorWidth(currentMonitor);
-    int screenHeight = GetMonitorHeight(currentMonitor);
-
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE);
+    int screenWidth = 1280;
+    int screenHeight = 720;
     InitWindow(screenWidth, screenHeight, "BioCynosis - Ecosystem Simulation");
+
+    // ========== МЕНЮ ==========
+    MenuSettings menuSettings;
+    MainMenu mainMenu(menuSettings, screenWidth, screenHeight);
+
+    while (!menuSettings.readyToStart && !WindowShouldClose()) {
+        mainMenu.Update();
+        BeginDrawing();
+        ClearBackground(DARKBLUE);
+        mainMenu.Draw();
+        EndDrawing();
+    }
+
+    if (WindowShouldClose()) {
+        CloseWindow();
+        return 0;
+    }
 
     SetTargetFPS(60);
 
     // ========== МУЗЫКА ==========
     InitAudioDevice();
     Music backgroundMusic;
-
     backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.mp3");
-
     if (backgroundMusic.stream.buffer == nullptr) {
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.ogg");
     }
     if (backgroundMusic.stream.buffer == nullptr) {
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.wav");
     }
-
     backgroundMusic.looping = true;
     PlayMusicStream(backgroundMusic);
-    // ============================
 
-    World myWorld;
+    World* myWorld = new World();
 
-    SpawnWolfPacksInForest(myWorld);
-    SpawnSheepSmartAndLogical(myWorld);
+    SpawnWolves(*myWorld, menuSettings.wolfCount);
+    SpawnSheepSmartAndLogical(*myWorld, menuSettings.sheepCount);
+    SpawnCrabsOnBeaches(*myWorld, 50);
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -179,10 +302,8 @@ int main() {
     CameraSpawn cameraSpawn(startPos, startPitch, startYaw);
     CameraController cameraController(startPos, startYaw, startPitch);
 
-    // СТАТИСТИКА
-    BeginMode3D(camera);
-        myWorld.Draw(); 
-    EndMode3D();   
+    FixedCameraSystem fixedCameraSystem;
+
     EcoStatsDisplay stats(1050, 10);
 
     double totalSimTime = 0.0;
@@ -192,13 +313,19 @@ int main() {
     int totalWolvesStarved = 0;
 
     // ========== НАЧАЛЬНЫЙ ПОДСЧЁТ СТАТИСТИКИ ==========
-    int initialSheep = 0, initialWolves = 0, initialGrass = 0;
-    for (const auto& entity : myWorld.GetEntities()) {
+    int initialSheep = 0, initialWolves = 0;
+    for (const auto& entity : myWorld->GetEntities()) {
         if (!entity->IsAlive()) continue;
         if (dynamic_cast<Sheep*>(entity.get())) initialSheep++;
         else if (dynamic_cast<Wolf*>(entity.get())) initialWolves++;
-        else if (dynamic_cast<Plant*>(entity.get())) initialGrass++;
     }
+
+    int initialGrass = myWorld->GetGrassCount();
+
+    totalSheepBorn = 0;
+    totalWolvesBorn = 0;
+
+    int lastSheepCount = initialSheep;
 
     stats.setSheepCount(initialSheep, totalSheepBorn);
     stats.setWolfCount(initialWolves, totalWolvesBorn);
@@ -206,7 +333,6 @@ int main() {
     stats.setSimulationTime(0);
     stats.setSheepEaten(0);
     stats.setStarvedWolves(0);
-    // =================================================
 
     float timeScale = 1.0f;
     Rectangle speedBtn = { 20, 20, 160, 40 };
@@ -215,13 +341,14 @@ int main() {
     bool isPaused = false;
     DisableCursor();
 
+    // ========== ПЕРЕМЕННЫЕ ДЛЯ РЕГЕНЕРАЦИИ ==========
+    bool isRegenerating = false;
+
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
         if (dt > 0.033f) dt = 0.033f;
 
-        // ========== ОБНОВЛЕНИЕ МУЗЫКИ ==========
         UpdateMusicStream(backgroundMusic);
-        // =====================================================
 
         if (IsKeyPressed(KEY_P)) {
             isPaused = !isPaused;
@@ -249,7 +376,131 @@ int main() {
             ToggleFullscreen();
         }
 
-        if (mouseCaptured) {
+        // ========== КЛАВИША R - РЕГЕНЕРАЦИЯ МИРА ==========
+        if (IsKeyPressed(KEY_R)) {
+            isRegenerating = true;
+        }
+
+        // Обработка диалога регенерации
+        if (isRegenerating) {
+            // Ждём нажатия Y или N
+            if (IsKeyPressed(KEY_Y)) {
+                // СОЗДАЁМ НОВЫЙ МИР
+                World* newWorld = new World();
+
+                SpawnWolves(*newWorld, menuSettings.wolfCount);
+                SpawnSheepSmartAndLogical(*newWorld, menuSettings.sheepCount);
+                SpawnCrabsOnBeaches(*newWorld, 50);
+
+                delete myWorld;
+                myWorld = newWorld;
+
+                // СБРАСЫВАЕМ ВСЮ СТАТИСТИКУ
+                totalSheepBorn = 0;
+                totalWolvesBorn = 0;
+                totalSheepEaten = 0;
+                totalWolvesStarved = 0;
+                totalSimTime = 0.0;
+
+                // СБРАСЫВАЕМ КАМЕРУ
+                camera.position = startPos;
+                camera.target = { 0.0f, 20.0f, 0.0f };
+                cameraController.SetPosition(startPos);
+
+                // ПЕРЕСЧИТЫВАЕМ НАЧАЛЬНУЮ СТАТИСТИКУ
+                int newInitialSheep = 0, newInitialWolves = 0;
+                for (const auto& entity : myWorld->GetEntities()) {
+                    if (!entity->IsAlive()) continue;
+                    if (dynamic_cast<Sheep*>(entity.get())) newInitialSheep++;
+                    else if (dynamic_cast<Wolf*>(entity.get())) newInitialWolves++;
+                }
+
+                lastSheepCount = newInitialSheep;
+                int newInitialGrass = myWorld->GetGrassCount();
+
+                stats.setSheepCount(newInitialSheep, totalSheepBorn);
+                stats.setWolfCount(newInitialWolves, totalWolvesBorn);
+                stats.setGrassCount(newInitialGrass);
+                stats.setSimulationTime(0);
+                stats.setSheepEaten(0);
+                stats.setStarvedWolves(0);
+
+                isRegenerating = false;
+            }
+            else if (IsKeyPressed(KEY_N) || IsKeyPressed(KEY_ESCAPE)) {
+                isRegenerating = false;
+            }
+        }
+
+        // ========== УПРАВЛЕНИЕ ФИКСИРОВАННЫМИ КАМЕРАМИ ==========
+        if (IsKeyPressed(KEY_TAB)) {
+            if (fixedCameraSystem.IsActive()) {
+                fixedCameraSystem.RestoreSavedCamera(camera);
+                fixedCameraSystem.Deactivate();
+                mouseCaptured = true;
+                DisableCursor();
+            }
+            else {
+                fixedCameraSystem.Activate(camera);
+                mouseCaptured = false;
+                EnableCursor();
+            }
+        }
+
+        if (fixedCameraSystem.IsActive()) {
+            if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) {
+                fixedCameraSystem.NextCamera();
+            }
+            if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) {
+                fixedCameraSystem.PrevCamera();
+            }
+        }
+
+        if (fixedCameraSystem.IsActive()) {
+            fixedCameraSystem.ApplyToCamera(camera);
+        }
+
+        // Клавиша O - спавн 10 овец
+        if (IsKeyPressed(KEY_O)) {
+            Vector3 forward = Vector3Subtract(camera.target, camera.position);
+            forward = Vector3Normalize(forward);
+
+            Vector3 basePos = camera.position;
+            basePos.x += forward.x * 20.0f;
+            basePos.z += forward.z * 20.0f;
+
+            for (int i = 0; i < 10; ++i) {
+                float offsetX = (float)GetRandomValue(-150, 150) / 10.0f;
+                float offsetZ = (float)GetRandomValue(-150, 150) / 10.0f;
+
+                float sx = basePos.x + offsetX;
+                float sz = basePos.z + offsetZ;
+                float sy = myWorld->GetHeight(sx, sz);
+
+                if (sy > Config::World::WATER_LEVEL) {
+                    auto sheep = std::unique_ptr<Sheep>(new Sheep((Vector3) { sx, sy, sz }));
+                    sheep->SetFlockCenter({ sx, sy, sz });
+                    myWorld->AddEntity(std::move(sheep));
+                }
+            }
+            myWorld->SpawnParticles(basePos, GREEN, 30, false);
+        }
+
+        // Клавиша V - спавн 1 волка
+        if (IsKeyPressed(KEY_V)) {
+            Vector3 forward = Vector3Subtract(camera.target, camera.position);
+            forward = Vector3Normalize(forward);
+
+            Vector3 spawnPos = camera.position;
+            spawnPos.x += forward.x * 20.0f;
+            spawnPos.z += forward.z * 20.0f;
+            spawnPos.y = myWorld->GetHeight(spawnPos.x, spawnPos.z);
+
+            myWorld->AddEntity(std::unique_ptr<Wolf>(new Wolf(spawnPos)));
+            myWorld->SpawnParticles(spawnPos, RED, 15, false);
+        }
+
+        if (mouseCaptured && !fixedCameraSystem.IsActive()) {
             cameraController.Update(dt, camera, true);
         }
 
@@ -268,19 +519,20 @@ int main() {
         }
 
         if (!isPaused) {
-            myWorld.Update(dt * timeScale);
+            myWorld->Update(dt * timeScale);
             totalSimTime += dt * timeScale;
         }
 
-        int aliveSheep = 0, aliveWolves = 0, grassPatches = 0;
-        for (const auto& entity : myWorld.GetEntities()) {
+        // ========== ПОДСЧЁТ СТАТИСТИКИ ==========
+        int aliveSheep = 0, aliveWolves = 0;
+        for (const auto& entity : myWorld->GetEntities()) {
             if (!entity->IsAlive()) continue;
             if (dynamic_cast<Sheep*>(entity.get())) aliveSheep++;
             else if (dynamic_cast<Wolf*>(entity.get())) aliveWolves++;
-            else if (dynamic_cast<Plant*>(entity.get())) grassPatches++;
         }
 
-        static int lastSheepCount = 0;
+        int grassCount = myWorld->GetGrassCount();
+
         int sheepDelta = aliveSheep - lastSheepCount;
         if (sheepDelta < 0) {
             totalSheepEaten += (-sheepDelta);
@@ -300,22 +552,21 @@ int main() {
 
         stats.setSheepCount(aliveSheep, totalSheepBorn);
         stats.setWolfCount(aliveWolves, totalWolvesBorn);
-        stats.setGrassCount(grassPatches);
+        stats.setGrassCount(grassCount);
         stats.setSimulationTime(totalSimTime);
         stats.setSheepEaten(totalSheepEaten);
         stats.setStarvedWolves(totalWolvesStarved);
 
         stats.Update(dt);
 
-        // ОТРИСОВКА
+        // ========== ОТРИСОВКА ==========
         BeginDrawing();
         ClearBackground(SKYBLUE);
 
         BeginMode3D(camera);
-        myWorld.Draw();
+        myWorld->Draw();
         EndMode3D();
 
-        // 2D ИНТЕРФЕЙС
         Color btnColor = isBtnHovered ? LIGHTGRAY : RAYWHITE;
         DrawRectangleRec(speedBtn, btnColor);
         DrawRectangleLinesEx(speedBtn, 2, BLACK);
@@ -332,17 +583,53 @@ int main() {
 
         stats.Draw();
 
+        // ========== ДИАЛОГ ПОДТВЕРЖДЕНИЯ РЕГЕНЕРАЦИИ ==========
+        if (isRegenerating) {
+            DrawRectangle(0, 0, screenWidth, screenHeight, (Color) { 0, 0, 0, 180 });
+
+            Rectangle dialogBox = { screenWidth / 2 - 200, screenHeight / 2 - 75, 400, 150 };
+            DrawRectangleRec(dialogBox, (Color) { 50, 50, 70, 255 });
+            DrawRectangleLinesEx(dialogBox, 3, YELLOW);
+
+            DrawText("Create new world?", screenWidth / 2 - MeasureText("Create new world?", 24) / 2,
+                screenHeight / 2 - 45, 24, WHITE);
+            DrawText("Current progress will be lost!", screenWidth / 2 - MeasureText("Current progress will be lost!", 18) / 2,
+                screenHeight / 2 - 15, 18, ORANGE);
+
+            DrawText("Press Y - YES     N - NO", screenWidth / 2 - MeasureText("Press Y - YES     N - NO", 20) / 2,
+                screenHeight / 2 + 30, 20, YELLOW);
+        }
+
+        // ========== ОТРИСОВКА ИНТЕРФЕЙСА КАМЕР ==========
+        if (fixedCameraSystem.IsActive()) {
+            DrawRectangle(0, screenHeight - 80, 400, 80, (Color) { 0, 0, 0, 200 });
+
+            const char* camName = fixedCameraSystem.GetCurrentCameraName();
+            int camNameWidth = MeasureText(camName, 25);
+            DrawText(camName, screenWidth / 2 - camNameWidth / 2, screenHeight - 70, 25, YELLOW);
+
+            DrawText("Press TAB to exit camera mode", screenWidth / 2 - 150, screenHeight - 40, 18, LIGHTGRAY);
+            DrawText("LEFT/RIGHT arrows to change camera", screenWidth / 2 - 170, screenHeight - 20, 16, GRAY);
+
+            char camIndexText[32];
+            snprintf(camIndexText, sizeof(camIndexText), "CAMERA %d/%d",
+                fixedCameraSystem.GetCurrentIndex() + 1, FIXED_CAMERA_COUNT);
+            int idxWidth = MeasureText(camIndexText, 15);
+            DrawText(camIndexText, screenWidth - idxWidth - 20, screenHeight - 25, 15, GRAY);
+        }
+
         if (!mouseCaptured) {
             DrawText("Click in window to capture mouse", screenWidth / 2 - 200, screenHeight - 30, 18, DARKGRAY);
         }
         else {
-            DrawText("WASD + Mouse | Q/E up/down | Shift/Ctrl speed | P pause | LEFT ALT free cursor",
-                screenWidth / 2 - 400, screenHeight - 30, 18, DARKGRAY);
+            DrawText("WASD+Mouse | Q/E | Shift/Ctrl | P-pause | ALT | F11 | O-Sheep | V-Wolf | TAB-cams | R-Reset",
+                screenWidth / 2 - 450, screenHeight - 30, 18, DARKGRAY);
         }
 
         EndDrawing();
     }
 
+    delete myWorld;
     UnloadMusicStream(backgroundMusic);
     CloseAudioDevice();
 

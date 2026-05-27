@@ -1,3 +1,4 @@
+#pragma warning(disable: 4576)
 #include "world.hpp"
 #include "../entities/animal.hpp"
 #include "../entities/wolf.hpp"
@@ -660,12 +661,12 @@ float World::EatGrass(int index) {
     // Партиклы исчезающей травы: ярко-зелёный взрыв из листочков
     Vector3 burstPos = grassPatches[index].position;
     burstPos.y += 0.3f;
-    SpawnParticles(burstPos, (Color){90, 220, 60, 255}, 8, false);
+    SpawnParticles(burstPos, (Color) { 90, 220, 60, 255 }, 8, false);
 
     switch (grassPatches[index].type) {
-        case Config::Grass::Type::MEADOW:  return Config::Grass::MEADOW_NUTRITION;
-        case Config::Grass::Type::FERN:    return Config::Grass::FERN_NUTRITION;
-        case Config::Grass::Type::COASTAL: return Config::Grass::COASTAL_NUTRITION;
+    case Config::Grass::Type::MEADOW:  return Config::Grass::MEADOW_NUTRITION;
+    case Config::Grass::Type::FERN:    return Config::Grass::FERN_NUTRITION;
+    case Config::Grass::Type::COASTAL: return Config::Grass::COASTAL_NUTRITION;
     }
     return 0.0f;
 }
@@ -673,3 +674,13 @@ float World::EatGrass(int index) {
 void World::Draw2D(Camera camera) {
     // Пока пуст — hunter.Draw2D вызывается из main или draw
 }
+
+// ↓↓↓ ДОБАВЬТЕ ЭТОТ МЕТОД СЮДА ↓↓↓
+int World::GetGrassCount() const {
+    int count = 0;
+    for (const auto& g : grassPatches) {
+        if (g.alive) count++;
+    }
+    return count;
+}
+// ↑↑↑ ДОБАВЬТЕ ЭТОТ МЕТОД СЮДА ↑↑↑
