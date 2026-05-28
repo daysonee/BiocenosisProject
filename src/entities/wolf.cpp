@@ -341,7 +341,8 @@ void Wolf::UpdateWandering(float dt, World* world) {
     }
 
     // ПОЕДАНИЕ ТРАВЫ ПО ПУТИ (если еще не переел)
-    if (ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5) {
+    if (ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5 && 
+    grassCooldownTimer <= 0.0f) {
         
         // ИСПРАВЛЕНИЕ: Ищем новую траву ТОЛЬКО если у нас сейчас нет активной цели!
         if (targetGrassIndex == -1) {
@@ -377,6 +378,7 @@ void Wolf::UpdateWandering(float dt, World* world) {
                 world->EatGrass(targetGrassIndex); 
                 targetGrassIndex = -1;             
                 grassEatenCount++;
+                grassCooldownTimer = 90.0f;
                 if (grassEatenCount >= 5) {
                     isSheepFrenzy = true;
                     state = AnimalState::HUNTING;
@@ -500,7 +502,8 @@ void Wolf::UpdateHunting(float dt, World* world) {
     }
 
     // Приоритет 1.5: Активный поиск травы, если нужно набрать 5 штук
-    if (!isSheepFrenzy && ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5) {
+    if (!isSheepFrenzy && ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5 && 
+    grassCooldownTimer <= 0.0f) {
         
         // ИСПРАВЛЕНИЕ: Ищем новую траву ТОЛЬКО если у нас сейчас нет активной цели!
         if (targetGrassIndex == -1) {
@@ -535,6 +538,7 @@ void Wolf::UpdateHunting(float dt, World* world) {
                 world->EatGrass(targetGrassIndex); 
                 targetGrassIndex = -1;
                 grassEatenCount++;
+                grassCooldownTimer = 90.0f;
                 if (grassEatenCount >= 5) {
                     isSheepFrenzy = true; 
                 }
@@ -782,6 +786,10 @@ void Wolf::UpdateFighting(float dt, World* world) {
 void Wolf::Update(float deltaTime, World* world) {
     if (!isAlive) return;
 
+    if (grassCooldownTimer > 0.0f) {
+        grassCooldownTimer -= deltaTime;
+    }
+
     // === ИНСТИНКТ САМОСОХРАНЕНИЯ (Побег от охотника) ===
     Hunter* dangerHunter = nullptr;
     float wolfVisionRadius = 35.0f; // Дистанция, на которой волк замечает охотника
@@ -886,6 +894,7 @@ void Wolf::Update(float deltaTime, World* world) {
     if (pounceCooldownTimer > 0.0f) pounceCooldownTimer -= deltaTime;
     if (matingCooldownTimer > 0.0f) matingCooldownTimer -= deltaTime;
     if (fightCooldownTimer  > 0.0f) fightCooldownTimer  -= deltaTime;
+    if (grassCooldownTimer  > 0.0f) grassCooldownTimer  -= deltaTime;
 
     // ── Голод ────────────────────────────────────────────────────────────────
     hunger -= Config::Wolf::HUNGER_DECAY_RATE * deltaTime;

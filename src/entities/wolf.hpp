@@ -70,8 +70,9 @@ private:
     void MoveSwimming(float dt, World* world);
     void TryStartPounce(float distToPrey, World* world);
 
-    int  grassEatenCount = 0;   // Счётчик съеденной травы
-    bool isSheepFrenzy   = false; // Флаг «режима уничтожения овец»
+    int   grassEatenCount    = 0;       // Счётчик съеденной травы
+    bool  isSheepFrenzy      = false;   // Флаг «режима уничтожения овец»
+    float grassCooldownTimer = 0.0f;    // Таймер переваривания травы
 
     // Поиск
     Sheep*   FindNearestSheepInRadius(World* world, float radius) const;
