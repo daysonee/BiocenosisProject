@@ -2,6 +2,7 @@
 #include "wolf.hpp"
 #include "sheep.hpp"
 #include "carcass.hpp"
+#include "hunter.hpp"
 #include "../core/world.hpp"
 #include "../core/constants.hpp"
 #include <raymath.h>
@@ -84,6 +85,9 @@ float Wolf::FullCooldown() const {
 }
 
 float Wolf::CurrentHuntingRadius() const {
+    if (isSheepFrenzy) {
+        return Config::Wolf::HUNTING_RADIUS_ADULT * 3.0f; // Увеличиваем радиус поиска овец в 3 раза!
+    }
     switch (ageStage) {
         case Config::Wolf::AgeStage::BABY:   return Config::Wolf::HUNTING_RADIUS_BABY;
         case Config::Wolf::AgeStage::MEDIUM: return Config::Wolf::HUNTING_RADIUS_MEDIUM;
@@ -245,6 +249,7 @@ void Wolf::UpdateAge(float dt, World* world) {
         maxAgeInCurrentStage = Config::Wolf::TIME_ADULT_LIFESPAN;
         ageTimer = 0.0f;
     } else {
+        if (targetGrassIndex != -1) world->SetGrassReserved(targetGrassIndex, false);
         diedOfOldAge = true;
         world->SpawnParticles(position, (Color){180,180,180,255}, 14, false);
         Die(DeathCause::OLD_AGE);
@@ -323,11 +328,62 @@ void Wolf::UpdateIdle(float dt, World* world) {
 // ═════════════════════════════════════════════════════════════════════════════
 
 void Wolf::UpdateWandering(float dt, World* world) {
+    if (isSheepFrenzy) {
+        state = AnimalState::HUNTING;
+        return;
+    }
+
     // Голод — прервать и идти на охоту
     if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
         state = AnimalState::HUNTING;
         PickMeadowHuntTarget(world);
         return;
+    }
+
+    // ПОЕДАНИЕ ТРАВЫ ПО ПУТИ (если еще не переел)
+    if (ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5) {
+        
+        // ИСПРАВЛЕНИЕ: Ищем новую траву ТОЛЬКО если у нас сейчас нет активной цели!
+        if (targetGrassIndex == -1) {
+            Vector3 grassPos;
+            Config::Grass::Type grassType;
+            int grassIdx = -1;
+            float currentRadius = 30.0f; // Начальный радиус
+            float maxRadius = 150.0f;    // Максимальный радиус поиска
+            float radiusStep = 30.0f;    // Шаг расширения
+
+            // Ищем свободную траву, расширяя радиус
+            while (currentRadius <= maxRadius) {
+                grassIdx = world->FindNearestGrass(position, currentRadius, grassPos, grassType);
+                if (grassIdx != -1) break; // Нашли свободную!
+                currentRadius += radiusStep;   
+            }
+
+            if (grassIdx >= 0) {
+                targetGrassIndex = grassIdx;
+                world->SetGrassReserved(targetGrassIndex, true); // Бронируем куст
+                targetPosition = grassPos;                       // Запоминаем точные координаты
+            }
+        }
+
+        // Если цель уже выбрана — уверенно идём к ней
+        if (targetGrassIndex != -1) {
+            MoveSwimming(dt, world);
+            
+            // ИСПРАВЛЕНИЕ: 2D дистанция вместо 3D, чтобы не зависать на склонах
+            float d2d = Vector2Distance({position.x, position.z}, {targetPosition.x, targetPosition.z});
+            
+            if (d2d < 1.5f) {
+                world->EatGrass(targetGrassIndex); 
+                targetGrassIndex = -1;             
+                grassEatenCount++;
+                if (grassEatenCount >= 5) {
+                    isSheepFrenzy = true;
+                    state = AnimalState::HUNTING;
+                }
+            }
+            return; 
+        }
     }
 
     // Территориальная атака: овца в лесу — атакуем независимо от голода
@@ -373,15 +429,15 @@ void Wolf::UpdateWandering(float dt, World* world) {
         // Чужой волк поблизости — бросок 60/40
         Wolf* outsider = FindNearestOtherWolf(world, Config::Wolf::MATING_SEARCH_RADIUS);
         if (outsider && outsider->CanMate()) {
-            if (GetRandomValue(0, 99) < 60) {
-                // 60% — спариваемся
+            if (GetRandomValue(0, 99) < 80) {
+                // 80% — спариваемся
                 mateTarget           = outsider;
                 isMating             = true;
                 outsider->mateTarget = this;
                 outsider->isMating   = true;
                 state = AnimalState::MATING;
             } else {
-                // 40% — атакуем
+                // 20% — атакуем
                 if (fightCooldownTimer <= 0.0f && !outsider->isMating) {
                     state              = AnimalState::FIGHTING;
                     fightTarget        = outsider;
@@ -421,24 +477,70 @@ void Wolf::UpdateHunting(float dt, World* world) {
     float huntR = CurrentHuntingRadius();
 
     // Приоритет 1: труп — лёгкая еда
-    Carcass* carcass = FindNearestCarcassInRadius(world, huntR);
-    if (carcass) {
-        targetPosition = carcass->GetPosition();
-        MoveSwimming(dt, world);
-        if (Vector3Distance(position, carcass->GetPosition()) < 1.5f) {
-            float nutrition = carcass->GetNutrition();
-            bool  rotten    = carcass->IsRotten();
-            hunger = fminf(hunger + nutrition, 100.0f);
-            Vector3 fp = carcass->GetPosition(); fp.y += 0.3f;
-            world->SpawnParticles(fp, (Color){140,60,50,255}, 10, false);
-            world->SpawnParticles(fp, (Color){90,70,50,255},  6,  false);
-            carcass->Die();
-            if (rotten && GetRandomValue(0, 99) < 50) {
-                world->SpawnParticles(position, (Color){80,130,60,255}, 18, false);
-                Die(DeathCause::OTHER);
+    if (!isSheepFrenzy) {
+        Carcass* carcass = FindNearestCarcassInRadius(world, huntR);
+        if (carcass) {
+            targetPosition = carcass->GetPosition();
+            MoveSwimming(dt, world);
+            if (Vector3Distance(position, carcass->GetPosition()) < 1.5f) {
+                float nutrition = carcass->GetNutrition();
+                bool  rotten    = carcass->IsRotten();
+                hunger = fminf(hunger + nutrition, 100.0f);
+                Vector3 fp = carcass->GetPosition(); fp.y += 0.3f;
+                world->SpawnParticles(fp, (Color){140,60,50,255}, 10, false);
+                world->SpawnParticles(fp, (Color){90,70,50,255},  6,  false);
+                carcass->Die();
+                if (rotten && GetRandomValue(0, 99) < 50) {
+                    world->SpawnParticles(position, (Color){80,130,60,255}, 18, false);
+                    Die(DeathCause::OTHER);
+                }
+            }
+            return;
+        }
+    }
+
+    // Приоритет 1.5: Активный поиск травы, если нужно набрать 5 штук
+    if (!isSheepFrenzy && ageStage != Config::Wolf::AgeStage::BABY && grassEatenCount < 5) {
+        
+        // ИСПРАВЛЕНИЕ: Ищем новую траву ТОЛЬКО если у нас сейчас нет активной цели!
+        if (targetGrassIndex == -1) {
+            Vector3 grassPos;
+            Config::Grass::Type grassType;
+            int grassIdx = -1;
+            float currentRadius = 30.0f;
+            float maxRadius = 150.0f;    
+            float radiusStep = 30.0f;
+
+            while (currentRadius <= maxRadius) {
+                grassIdx = world->FindNearestGrass(position, currentRadius, grassPos, grassType);
+                if (grassIdx != -1) break;
+                currentRadius += radiusStep;
+            }
+
+            if (grassIdx >= 0) {
+                targetGrassIndex = grassIdx;
+                world->SetGrassReserved(targetGrassIndex, true);
+                targetPosition = grassPos;
             }
         }
-        return;
+
+        // Если цель уже выбрана — уверенно идём к ней
+        if (targetGrassIndex != -1) {
+            MoveSwimming(dt, world);
+            
+            // ИСПРАВЛЕНИЕ: 2D дистанция вместо 3D
+            float d2d = Vector2Distance({position.x, position.z}, {targetPosition.x, targetPosition.z});
+            
+            if (d2d < 1.5f) {
+                world->EatGrass(targetGrassIndex); 
+                targetGrassIndex = -1;
+                grassEatenCount++;
+                if (grassEatenCount >= 5) {
+                    isSheepFrenzy = true; 
+                }
+            }
+            return; 
+        }
     }
 
     // Приоритет 2: овца
@@ -494,6 +596,12 @@ void Wolf::UpdateHunting(float dt, World* world) {
             targetPrey     = nullptr;
             hasPrevPreyPos = false;
             pounceTimer    = 0.0f;
+
+            // СБРОС СОСТОЯНИЯ ПОСЛЕ СЪЕДЕНИЯ ОВЦЫ
+            if (isSheepFrenzy) {
+                isSheepFrenzy = false;
+                grassEatenCount = 0;
+            }
 
             // Если убили в лесу (территориальная охота) — возвращаемся бродить
             if (IsInForest(world)) {
@@ -659,6 +767,7 @@ void Wolf::UpdateFighting(float dt, World* world) {
             world->SpawnParticles(fp, (Color){140,110,80,255}, 4, false);
         }
         if (fightHealth <= 0.0f) {
+            if (targetGrassIndex != -1) world->SetGrassReserved(targetGrassIndex, false);
             world->SpawnParticles(position, (Color){150,60,60,255}, 12, false);
             diedInFight = true;
             Die(DeathCause::FIGHT);
@@ -670,11 +779,84 @@ void Wolf::UpdateFighting(float dt, World* world) {
 //                          ОСНОВНОЙ UPDATE
 // ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::Update(float dt, World* world) {
-    if (!IsAlive()) return;
+void Wolf::Update(float deltaTime, World* world) {
+    if (!isAlive) return;
 
+    // === ИНСТИНКТ САМОСОХРАНЕНИЯ (Побег от охотника) ===
+    Hunter* dangerHunter = nullptr;
+    float wolfVisionRadius = 35.0f; // Дистанция, на которой волк замечает охотника
+
+    // Ищем охотника среди существ в мире
+    for (const auto& entity : world->GetEntities()) {
+        if (!entity->IsAlive()) continue;
+        Hunter* h = dynamic_cast<Hunter*>(entity.get());
+        if (h) {
+            float dist = Vector3Distance(position, h->GetPosition());
+            if (dist < wolfVisionRadius) {
+                dangerHunter = h;
+                break; // Нашли ближайшую угрозу
+            }
+        }
+    }
+
+    if (dangerHunter) {
+        // Сбрасываем мирные цели, так как началась паника
+        targetPrey = nullptr;
+        mateTarget = nullptr;
+        isMating = false;
+
+        if (targetGrassIndex != -1) {
+            world->SetGrassReserved(targetGrassIndex, false);
+            targetGrassIndex = -1;
+        }
+        // Вычисляем вектор направления ОТ охотника
+        Vector3 fleeDirection = Vector3Normalize(Vector3Subtract(position, dangerHunter->GetPosition()));
+        
+        // Скорость панического бега (делаем её выше стандартного бега волка)
+        float panicSpeed = Config::Wolf::SPEED_RUN * 1.5f; 
+        
+        // Точка, в направлении которой волк делает шаг на этом кадре
+        Vector3 targetFleePos = Vector3Add(position, Vector3Scale(fleeDirection, 5.0f));
+        
+        // Передвигаем волка аналогично логике движения охотника
+        Vector3 dir = { targetFleePos.x - position.x, 0.0f, targetFleePos.z - position.z };
+        float distance = Vector3Length(dir);
+        if (distance > 0.1f) {
+            facingAngle = atan2f(dir.x, dir.z) * RAD2DEG;
+            Vector3 normDir = Vector3Normalize(dir);
+            float step = panicSpeed * deltaTime;
+            
+            float nx = position.x + normDir.x * step;
+            float nz = position.z + normDir.z * step;
+            
+            // Проверка, чтобы волк не забегал глубоко в воду при побеге
+            if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
+                position.x = nx;
+                position.z = nz;
+            }
+        }
+        position.y = world->GetHeight(position.x, position.z);
+
+        // Визуальный эффект: паникующий волк иногда оставляет за собой облачка серой пыли
+        if (GetRandomValue(0, 6) == 0) {
+            world->SpawnParticles(position, GRAY, 1, false);
+        }
+
+        // ВАЖНО: Во время побега жизненные параметры волка должны продолжать обновляться!
+        hunger -= Config::Wolf::HUNGER_DECAY_RATE * deltaTime;
+        ageTimer += deltaTime;
+        
+        if (hunger <= 0.0f) {
+            hunger = 0.0f;
+            // Если у вас реализована смерть от истощения прямо в Update, вызовите её:
+            // Die(DeathCause::STARVATION);
+        }
+
+        return; // Завершаем Update для этого кадра, игнорируя обычный switch(state)
+    }
+    
     // ── Защита от застревания ────────────────────────────────────────────────
-    stuckCheckTimer += dt;
+    stuckCheckTimer += deltaTime;
     if (stuckCheckTimer >= 1.0f) {
         stuckCheckTimer = 0.0f;
         if (state == AnimalState::WANDERING || state == AnimalState::HUNTING) {
@@ -686,27 +868,34 @@ void Wolf::Update(float dt, World* world) {
     if (stuckCount >= 3) {
         stuckCount = 0;
         targetPrey = nullptr;
+        
+        // КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Если волк застрял по пути к траве (например, она в дереве), сбрасываем цель!
+        if (targetGrassIndex != -1) {
+            world->SetGrassReserved(targetGrassIndex, false);
+            targetGrassIndex = -1;
+        }
+
         if (state == AnimalState::HUNTING) PickMeadowHuntTarget(world);
         else PickForestWanderTarget(world);
     }
-
     // ── Возраст ──────────────────────────────────────────────────────────────
-    UpdateAge(dt, world);
+    UpdateAge(deltaTime, world);
     if (!IsAlive()) return;
 
     // ── Таймеры ──────────────────────────────────────────────────────────────
-    if (pounceCooldownTimer > 0.0f) pounceCooldownTimer -= dt;
-    if (matingCooldownTimer > 0.0f) matingCooldownTimer -= dt;
-    if (fightCooldownTimer  > 0.0f) fightCooldownTimer  -= dt;
+    if (pounceCooldownTimer > 0.0f) pounceCooldownTimer -= deltaTime;
+    if (matingCooldownTimer > 0.0f) matingCooldownTimer -= deltaTime;
+    if (fightCooldownTimer  > 0.0f) fightCooldownTimer  -= deltaTime;
 
     // ── Голод ────────────────────────────────────────────────────────────────
-    hunger -= Config::Wolf::HUNGER_DECAY_RATE * dt;
+    hunger -= Config::Wolf::HUNGER_DECAY_RATE * deltaTime;
     if (hunger < 0.0f) hunger = 0.0f;
 
     // ── Смерть от голода ─────────────────────────────────────────────────────
     if (hunger <= 0.0f) {
-        starvationTimer += dt;
+        starvationTimer += deltaTime;
         if (starvationTimer >= Config::Wolf::STARVATION_LIMIT) {
+            if (targetGrassIndex != -1) world->SetGrassReserved(targetGrassIndex, false);
             world->SpawnParticles(position, (Color){90,90,90,255}, 14, false);
             world->SpawnParticles(position, (Color){60,50,40,255}, 8,  false);
             Die(DeathCause::STARVATION);
@@ -718,7 +907,7 @@ void Wolf::Update(float dt, World* world) {
 
     // ── Встряхивание блокирует всё ───────────────────────────────────────────
     if (shakeTimer > 0.0f) {
-        shakeTimer -= dt; swimSplashTimer -= dt;
+        shakeTimer -= deltaTime; swimSplashTimer -= deltaTime;
         if (swimSplashTimer <= 0.0f) {
             swimSplashTimer = 0.15f;
             world->SpawnParticles(
@@ -730,7 +919,7 @@ void Wolf::Update(float dt, World* world) {
 
     // ── Скорость ─────────────────────────────────────────────────────────────
     float baseSpeed = Config::Wolf::SPEED_RUN * CurrentSpeedFactor();
-    if      (pounceTimer        > 0.0f) { pounceTimer -= dt; speed = Config::Wolf::POUNCE_SPEED * CurrentSpeedFactor(); }
+    if      (pounceTimer        > 0.0f) { pounceTimer -= deltaTime; speed = Config::Wolf::POUNCE_SPEED * CurrentSpeedFactor(); }
     else if (pounceCooldownTimer > 0.0f)  speed = baseSpeed * Config::Wolf::REST_SPEED_FACTOR;
     else                                  speed = baseSpeed;
 
@@ -781,21 +970,25 @@ void Wolf::Update(float dt, World* world) {
             }
         }
 
-        MoveSwimming(dt, world);
+        MoveSwimming(deltaTime, world);
         // Снап к рельефу только если не в воде
         float th = world->GetHeight(position.x, position.z);
         if (th > world->GetCurrentWaterLevel()) position.y = th;
         return;
     }
 
+    if (isSheepFrenzy) {
+        state = AnimalState::HUNTING; // Принудительно удерживаем состояние охоты
+    }
+
     // ── Машина состояний ─────────────────────────────────────────────────────
     switch (state) {
-        case AnimalState::IDLE:     UpdateIdle     (dt, world); break;
-        case AnimalState::WANDERING: UpdateWandering(dt, world); break;
+        case AnimalState::IDLE:     UpdateIdle     (deltaTime, world); break;
+        case AnimalState::WANDERING: UpdateWandering(deltaTime, world); break;
         case AnimalState::HUNGRY:   // HUNGRY не используется, переадресуем
-        case AnimalState::HUNTING:  UpdateHunting  (dt, world); break;
-        case AnimalState::MATING:   UpdateMating   (dt, world); break;
-        case AnimalState::FIGHTING: UpdateFighting (dt, world); break;
+        case AnimalState::HUNTING:  UpdateHunting  (deltaTime, world); break;
+        case AnimalState::MATING:   UpdateMating   (deltaTime, world); break;
+        case AnimalState::FIGHTING: UpdateFighting (deltaTime, world); break;
         case AnimalState::FLEEING:  state = AnimalState::WANDERING; break;
     }
 

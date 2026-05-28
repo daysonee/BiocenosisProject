@@ -792,7 +792,7 @@ int World::FindNearestGrass(Vector3 from, float maxRadius,
     float bestDist = maxRadius;
     float waterLvl = GetCurrentWaterLevel();
     for (size_t i = 0; i < grassPatches.size(); ++i) {
-        if (!grassPatches[i].alive) continue;
+        if (!grassPatches[i].alive || grassPatches[i].reserved) continue;
         // Пропускаем траву которая сейчас под водой (прилив)
         if (grassPatches[i].position.y <= waterLvl) continue;
         float d = Vector3Distance(from, grassPatches[i].position);
@@ -813,6 +813,7 @@ float World::EatGrass(int index) {
     if (index < 0 || index >= (int)grassPatches.size()) return 0.0f;
     if (!grassPatches[index].alive) return 0.0f;
     grassPatches[index].alive = false;
+    grassPatches[index].reserved = false;
     // Запускаем таймер регенерации
     grassPatches[index].regrowTimer = (float)GetRandomValue(
         (int)Config::Grass::REGROW_MIN, (int)Config::Grass::REGROW_MAX);
@@ -834,7 +835,6 @@ void World::Draw2D(Camera camera) {
     // Пока пуст — hunter.Draw2D вызывается из main или draw
 }
 
-// ↓↓↓ ДОБАВЬТЕ ЭТОТ МЕТОД СЮДА ↓↓↓
 int World::GetGrassCount() const {
     int count = 0;
     for (const auto& g : grassPatches) {
@@ -842,4 +842,9 @@ int World::GetGrassCount() const {
     }
     return count;
 }
-// ↑↑↑ ДОБАВЬТЕ ЭТОТ МЕТОД СЮДА ↑↑↑
+
+void World::SetGrassReserved(int index, bool reserved) {
+    if (index >= 0 && index < (int)grassPatches.size()) {
+        grassPatches[index].reserved = reserved;
+    }
+}

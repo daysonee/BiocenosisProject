@@ -13,6 +13,8 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     shootCooldown = 0.0f;
     facingAngle = 0.0f;
     smokeTimer = 0.0f;
+    abilityTimer = 0.0f;
+    abilityCooldown = 0.0f;
 }
 
 Wolf* Hunter::FindNearestWolf(World* world) {
@@ -59,6 +61,9 @@ void Hunter::MoveTowards(Vector3 target, float speed, float deltaTime, World* wo
 
 void Hunter::Update(float deltaTime, World* world) {
     if (shootCooldown > 0.0f) shootCooldown -= deltaTime;
+    
+    if (abilityCooldown > 0.0f) abilityCooldown -= deltaTime;
+    if (abilityTimer > 0.0f) abilityTimer -= deltaTime;
 
     // === 1. РЕФЛЕКСЫ ОХОТНИКА (Глобальная проверка) ===
     // Если Железин не спит в хижине, он всегда сканирует местность
@@ -170,10 +175,29 @@ void Hunter::Update(float deltaTime, World* world) {
             break;
 
         case HunterState::CHASING:
-            // Логика выстрела перенесена в глобальный блок наверх, 
-            // поэтому здесь остается ТОЛЬКО бег за текущей целью!
             if (targetWolf) {
-                MoveTowards(targetWolf->GetPosition(), Config::Hunter::SPEED_RUN, deltaTime, world);
+                float dist = Vector3Distance(position, targetWolf->GetPosition());
+                
+                // АКТИВАЦИЯ СПРИНТА: если волк далеко и способность готова
+                if (dist > 20.0f && abilityCooldown <= 0.0f && abilityTimer <= 0.0f) {
+                    abilityTimer = 5.0f;       // Ускорение на 5 секунд
+                    abilityCooldown = 20.0f;   // Кулдаун 20 секунд
+                    world->SpawnParticles(position, ORANGE, 25, false); // Взрыв частиц азарта
+                }
+
+                // Базовая скорость охотника при погоне — 14.0f
+                float currentSpeed = 14.0f; 
+                
+                // Если спринт активен, разгоняем охотника до ~24.0f
+                if (abilityTimer > 0.0f) {
+                    currentSpeed *= 1.7f;
+                    if (GetRandomValue(0, 2) == 0) {
+                        world->SpawnParticles(position, YELLOW, 2, false); // Искры под ногами
+                    }
+                }
+
+                // Движение к волку
+                MoveTowards(targetWolf->GetPosition(), currentSpeed, deltaTime, world);
             }
             break;
 
@@ -206,12 +230,20 @@ void Hunter::Draw() {
     float intensity = 0.0f; 
 
     if (state == HunterState::CHASING) {
-        speed = 14.0f; 
+        // Задаем базовую скорость анимации ног при погоне
+        speed = 18.0f; 
+        
+        // Если способность сейчас активна, заставляем ноги двигаться еще быстрее!
+        if (abilityTimer > 0.0f) {
+            speed *= 1.3f; 
+        }
         intensity = 1.0f;
     } else if (state == HunterState::WANDERING || state == HunterState::RETURNING) {
-        speed = 7.0f; 
+        speed = 11.0f; 
         intensity = 0.5f;
     }
+
+    // Физическое перемещение MoveTowards отсюда удалено, так как оно уже работает в Update()
 
     float swingSin = sinf(time * speed) * intensity;
     float waddleAngleZ = swingSin * 3.0f; 
@@ -225,7 +257,7 @@ void Hunter::Draw() {
     rlPushMatrix();
     rlTranslatef(position.x, position.y, position.z); 
     
-    // Используем сохраненный угол! Теперь он не сбрасывается в 0, когда Железин останавливается
+    // Используем сохраненный угол, чтобы охотник не сбрасывал поворот при остановке
     rlRotatef(facingAngle, 0.0f, 1.0f, 0.0f);              
     rlRotatef(waddleAngleZ, 0.0f, 0.0f, 1.0f);       
 
@@ -236,13 +268,11 @@ void Hunter::Draw() {
     // Щетина
     DrawCube({0.0f, 1.59f, 0.02f}, 0.36f, 0.12f, 0.36f, stubbleColor);
 
-    // Кудрявые волосы — плотное облако сфер, покрывающее всю голову.
-    // Залысин по бокам нет, виски и затылок плотно укрыты.
+    // Кудрявые волосы
     DrawSphere({0.0f, 1.90f, 0.0f}, 0.18f, hairColor);       // макушка
     DrawSphere({-0.13f, 1.87f, 0.04f}, 0.13f, hairColor);    // верх-лев
     DrawSphere({0.13f, 1.87f, 0.04f}, 0.13f, hairColor);     // верх-прав
     DrawSphere({0.0f, 1.83f, -0.14f}, 0.14f, hairColor);     // затылок
-    // Виски: больший радиус, чтобы закрыть бок головы (раньше тут были залысины)
     DrawSphere({-0.18f, 1.78f, 0.0f}, 0.14f, hairColor);     // левый бок
     DrawSphere({0.18f, 1.78f, 0.0f}, 0.14f, hairColor);      // правый бок
     DrawSphere({-0.18f, 1.78f, -0.1f}, 0.12f, hairColor);    // левый бок-зад
