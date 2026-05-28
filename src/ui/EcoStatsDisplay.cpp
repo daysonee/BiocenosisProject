@@ -65,31 +65,51 @@ void EcoStatsDisplay::Update(float deltaTime) {
 }
 
 void EcoStatsDisplay::Draw() const {
-    int lineHeight = fontSize + 4;
-    int yOffset = posY;
+    // Вычисляем масштаб на лету на основе текущей высоты окна
+    float displayScale = (float)GetScreenHeight() / 720.0f;
+    if (displayScale < 0.6f) displayScale = 0.6f;
 
-    // Яркая рамка для проверки
-    DrawRectangle(posX - 5, posY - 5, 320, 280, panelColor);
-    DrawRectangleLines(posX - 5, posY - 5, 320, 280, YELLOW);  // Жёлтая рамка
+    // Адаптивные габариты инфо-панели
+    int panelWidth = (int)(330 * displayScale);
+    int panelHeight = (int)(280 * displayScale);
+    int dynamicFontSize = (int)(20 * displayScale);
+    int lineHeight = (int)(26 * displayScale);
 
-    DrawText("=== STATISTICS ===", posX, yOffset, fontSize + 2, SKYBLUE);
-    yOffset += lineHeight + 4;
+    // Если вы хотите, чтобы она всегда оставалась в Левом Верхнем Углу (как задумано изначально):
+    int actualX = (int)(posX * displayScale);
+    int actualY = (int)(posY * displayScale);
+
+    /* ПОДСКАЗКА: Если вы захотите прижать плашку к ПРАВОМУ верхнему углу, 
+    достаточно раскомментировать строку ниже:
+    actualX = GetScreenWidth() - panelWidth - 15;
+    */
+
+    int yOffset = actualY + (int)(10 * displayScale);
+
+    // Отрисовка заднего фона и рамки
+    DrawRectangle(actualX - 5, actualY - 5, panelWidth, panelHeight, panelColor);
+    
+    // Используем DrawRectangleLinesEx для адаптивной толщины рамки
+    DrawRectangleLinesEx((Rectangle){ (float)actualX - 5, (float)actualY - 5, (float)panelWidth, (float)panelHeight }, 2 * displayScale, YELLOW);  
+
+    DrawText("=== STATISTICS ===", actualX, yOffset, dynamicFontSize + 2, SKYBLUE);
+    yOffset += lineHeight + (int)(4 * displayScale);
 
     DrawText(TextFormat("Sheep: %d (born: %d)", sheepAlive, sheepTotalBorn),
-        posX, yOffset, fontSize, GREEN);
+        actualX, yOffset, dynamicFontSize, GREEN);
     yOffset += lineHeight;
 
     DrawText(TextFormat("Wolves: %d (born: %d)", wolvesAlive, wolvesTotalBorn),
-        posX, yOffset, fontSize, RED);
+        actualX, yOffset, dynamicFontSize, RED);
     yOffset += lineHeight;
 
     DrawText(TextFormat("Grass: %d", grassCount),
-        posX, yOffset, fontSize, YELLOW);
-    yOffset += lineHeight + 6;
+        actualX, yOffset, dynamicFontSize, YELLOW);
+    yOffset += lineHeight + (int)(6 * displayScale);
 
     int totalSec = (int)simulationTimeSeconds;
     DrawText(TextFormat("Time: %s", FormatTime(totalSec).c_str()),
-        posX, yOffset, fontSize, WHITE);
+        actualX, yOffset, dynamicFontSize, WHITE);
     yOffset += lineHeight;
 
     std::string balance = GetBalanceState();
@@ -99,14 +119,10 @@ void EcoStatsDisplay::Draw() const {
     else if (balance == "SHEEP WIN") balanceColor = ORANGE;
     else balanceColor = PURPLE;
 
-    DrawText(TextFormat("Balance: %s", balance.c_str()),
-        posX, yOffset, fontSize, balanceColor);
-    yOffset += lineHeight + 6;
-
-    DrawText(TextFormat("Sheep died: %d", sheepEatenCount),
-        posX, yOffset, fontSize, ORANGE);
+    DrawText(TextFormat("Status: %s", balance.c_str()),
+        actualX, yOffset, dynamicFontSize, balanceColor);
     yOffset += lineHeight;
 
-    DrawText(TextFormat("Wolves starved: %d", starvedWolvesCount),
-        posX, yOffset, fontSize, GRAY);
+    DrawText(TextFormat("Eaten: %d | Starved: %d", sheepEatenCount, starvedWolvesCount),
+        actualX, yOffset, (int)(16 * displayScale), LIGHTGRAY);
 }

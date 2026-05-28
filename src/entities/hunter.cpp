@@ -119,7 +119,7 @@ void Hunter::Update(float deltaTime, World* world) {
 
             if (smokeTimer <= 0.0f) {
                 // Труба находится в (hp.x + 1.0, hp.y + 5.35, hp.z) — высота над верхом трубы
-                Vector3 chimneyPos = { hutPosition.x + 1.0f, hutPosition.y + 5.5f, hutPosition.z };
+                Vector3 chimneyPos = { hutPosition.x + 1.6f, hutPosition.y + 6.6f, hutPosition.z-0.2f };
                 world->SpawnParticles(chimneyPos, GRAY, 1, false);
                 smokeTimer = 0.5f; 
             }

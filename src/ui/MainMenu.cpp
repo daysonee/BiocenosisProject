@@ -1,13 +1,16 @@
 #include "MainMenu.hpp"
-
+#include "raymath.h"
 void MainMenu::DrawButton(Rectangle rect, const char* text, Color color, bool isHovered) {
     Color btnColor = isHovered ? Color{ color.r, color.g, color.b, 200 } : color;
     DrawRectangleRec(rect, btnColor);
     DrawRectangleLinesEx(rect, 2, DARKGRAY);
 
-    int textWidth = MeasureText(text, 28);
+    // Масштабируем размер шрифта динамически под размер кнопки
+    int dynamicFontSize = (int)(28 * scale); 
+    int textWidth = MeasureText(text, dynamicFontSize);
+    
     DrawText(text, rect.x + rect.width / 2 - textWidth / 2,
-        rect.y + rect.height / 2 - 14, 28, BLACK);
+        rect.y + rect.height / 2 - dynamicFontSize / 2, dynamicFontSize, BLACK);
 }
 
 void MainMenu::DrawNumberButton(Rectangle rect, const char* text, bool isHovered) {
@@ -15,9 +18,10 @@ void MainMenu::DrawNumberButton(Rectangle rect, const char* text, bool isHovered
     DrawRectangleRec(rect, color);
     DrawRectangleLinesEx(rect, 2, DARKGRAY);
 
-    int textWidth = MeasureText(text, 30);
+    int dynamicFontSize = (int)(30 * scale);
+    int textWidth = MeasureText(text, dynamicFontSize);
     DrawText(text, rect.x + rect.width / 2 - textWidth / 2,
-        rect.y + rect.height / 2 - 15, 30, BLACK);
+        rect.y + rect.height / 2 - dynamicFontSize / 2, dynamicFontSize, BLACK);
 }
 
 void MainMenu::DrawValueBox(Rectangle rect, int value, const char* label, bool isHovered) {
@@ -25,11 +29,13 @@ void MainMenu::DrawValueBox(Rectangle rect, int value, const char* label, bool i
     DrawRectangleRec(rect, color);
     DrawRectangleLinesEx(rect, 2, DARKGRAY);
 
-    char buffer[64];
-    snprintf(buffer, sizeof(buffer), "%s: %d", label, value);
-    int textWidth = MeasureText(buffer, 24);
-    DrawText(buffer, rect.x + rect.width / 2 - textWidth / 2,
-        rect.y + rect.height / 2 - 12, 24, DARKBLUE);
+    char valText[32];
+    snprintf(valText, sizeof(valText), "%s: %d", label, value);
+
+    int dynamicFontSize = (int)(24 * scale);
+    int textWidth = MeasureText(valText, dynamicFontSize);
+    DrawText(valText, rect.x + rect.width / 2 - textWidth / 2,
+        rect.y + rect.height / 2 - dynamicFontSize / 2, dynamicFontSize, BLACK);
 }
 
 MainMenu::MainMenu(MenuSettings& settingsRef, int width, int height)
@@ -54,61 +60,64 @@ MainMenu::MainMenu(MenuSettings& settingsRef, int width, int height)
 }
 
 void MainMenu::Update() {
-    if (pulseDirection) {
-        titlePulse += 0.02f;
-        if (titlePulse >= 1.0f) pulseDirection = false;
-    }
-    else {
-        titlePulse -= 0.02f;
-        if (titlePulse <= 0.0f) pulseDirection = true;
-    }
+    // 1. ДИНАМИЧЕСКИЙ ПЕРЕРАСЧЕТ ГЕОМЕТРИИ И МАСШТАБА
+    screenWidth = GetScreenWidth();
+    screenHeight = GetScreenHeight();
+    float deltaTime = GetFrameTime();    
+    // За базовую высоту возьмем 720 пикселей. На 1440p масштаб станет 2.0x, на FullHD — ~1.5x
+    scale = (float)screenHeight / 720.0f;
+    if (scale < 0.5f) scale = 0.5f; // Защита от слишком сильного сжатия окна
 
+    float centerX = screenWidth / 2.0f;
+    float centerY = screenHeight / 2.0f;
+
+    // Адаптивные метрики блоков интерфейса
+    float boxWidth  = 220.0f * scale;
+    float boxHeight = 55.0f  * scale;
+    float btnWidth  = 45.0f  * scale;
+    float spacing   = 15.0f  * scale;
+
+    // Расставляем элементы вертикально от центра экрана
+    // Строка настроек Овец (Выше центра)
+    float ySheep = centerY - boxHeight - spacing;
+    sheepBtnValue = { centerX - boxWidth / 2.0f, ySheep, boxWidth, boxHeight };
+    sheepBtnDec   = { sheepBtnValue.x - btnWidth - 5 * scale, ySheep, btnWidth, boxHeight };
+    sheepBtnInc   = { sheepBtnValue.x + sheepBtnValue.width + 5 * scale, ySheep, btnWidth, boxHeight };
+
+    // Строка настроек Волков (Строго по центру)
+    float yWolf = centerY;
+    wolfBtnValue  = { centerX - boxWidth / 2.0f, yWolf, boxWidth, boxHeight };
+    wolfBtnDec    = { wolfBtnValue.x - btnWidth - 5 * scale, yWolf, btnWidth, boxHeight };
+    wolfBtnInc    = { wolfBtnValue.x + wolfBtnValue.width + 5 * scale, yWolf, btnWidth, boxHeight };
+
+    // Строка настроек Травы (Ниже центра)
+    float yGrass = centerY + boxHeight + spacing;
+    grassBtnValue = { centerX - boxWidth / 2.0f, yGrass, boxWidth, boxHeight };
+    grassBtnDec   = { grassBtnValue.x - btnWidth - 5 * scale, yGrass, btnWidth, boxHeight };
+    grassBtnInc   = { grassBtnValue.x + grassBtnValue.width + 5 * scale, yGrass, btnWidth, boxHeight };
+
+    // Большая Адаптивная Кнопка СТАРТ
+    float startWidth  = 340.0f * scale;
+    float startHeight = 65.0f * scale;
+    startBtn = { centerX - startWidth / 2.0f, yGrass + boxHeight + spacing * 2, startWidth, startHeight };
+
+    // (Ваш оригинальный код обработки пульсации titlePulse...)
+
+    // 2. ОБРАБОТКА ИНПУТА (Теперь работает по динамическим Rectangle!)
     Vector2 mousePos = GetMousePosition();
-    bool leftClicked = IsMouseButtonPressed(MOUSE_BUTTON_LEFT);
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
+        if (CheckCollisionPointRec(mousePos, sheepBtnDec) && settings.sheepCount > SHEEP_MIN) settings.sheepCount -= 10;
+        if (CheckCollisionPointRec(mousePos, sheepBtnInc) && settings.sheepCount < SHEEP_MAX) settings.sheepCount += 10;
+        
+        if (CheckCollisionPointRec(mousePos, wolfBtnDec) && settings.wolfCount > WOLF_MIN) settings.wolfCount -= 5;
+        if (CheckCollisionPointRec(mousePos, wolfBtnInc) && settings.wolfCount < WOLF_MAX) settings.wolfCount += 5;
+        
+        if (CheckCollisionPointRec(mousePos, grassBtnDec) && settings.grassCount > GRASS_MIN) settings.grassCount -= 100;
+        if (CheckCollisionPointRec(mousePos, grassBtnInc) && settings.grassCount < GRASS_MAX) settings.grassCount += 100;
 
-    // Овцы
-    bool decHover = CheckCollisionPointRec(mousePos, sheepBtnDec);
-    bool incHover = CheckCollisionPointRec(mousePos, sheepBtnInc);
-
-    if (leftClicked && decHover && settings.sheepCount > SHEEP_MIN) {
-        settings.sheepCount -= 10;
-        if (settings.sheepCount < SHEEP_MIN) settings.sheepCount = SHEEP_MIN;
-    }
-    if (leftClicked && incHover && settings.sheepCount < SHEEP_MAX) {
-        settings.sheepCount += 10;
-        if (settings.sheepCount > SHEEP_MAX) settings.sheepCount = SHEEP_MAX;
-    }
-
-    // Волки
-    decHover = CheckCollisionPointRec(mousePos, wolfBtnDec);
-    incHover = CheckCollisionPointRec(mousePos, wolfBtnInc);
-
-    if (CheckCollisionPointRec(mousePos, wolfBtnDec) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        settings.wolfCount -= 3;  
-        if (settings.wolfCount < WOLF_MIN) settings.wolfCount = WOLF_MIN;
-    }
-
-    if (CheckCollisionPointRec(mousePos, wolfBtnInc) && IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        settings.wolfCount += 3; 
-        if (settings.wolfCount > WOLF_MAX) settings.wolfCount = WOLF_MAX;
-    }
-
-    // Трава
-    decHover = CheckCollisionPointRec(mousePos, grassBtnDec);
-    incHover = CheckCollisionPointRec(mousePos, grassBtnInc);
-
-    if (leftClicked && decHover && settings.grassCount > GRASS_MIN) {
-        settings.grassCount -= 50;
-        if (settings.grassCount < GRASS_MIN) settings.grassCount = GRASS_MIN;
-    }
-    if (leftClicked && incHover && settings.grassCount < GRASS_MAX) {
-        settings.grassCount += 50;
-        if (settings.grassCount > GRASS_MAX) settings.grassCount = GRASS_MAX;
-    }
-
-    bool startHover = CheckCollisionPointRec(mousePos, startBtn);
-    if (leftClicked && startHover) {
-        settings.readyToStart = true;
+        if (CheckCollisionPointRec(mousePos, startBtn)) {
+            settings.readyToStart = true;
+        }
     }
 }
 

@@ -633,78 +633,95 @@ void World::Draw(){
     // ─── ОТРИСОВКА ХИЖИНЫ ОХОТНИКА ───
     // Простая деревенская изба с двускатной крышей, дверью, окном и трубой.
     Vector3 hp = hunterHutPosition;
+ 
+// Палитра
+Color logA      = { 120,  75,  30, 255 };
+Color logB      = {  95,  58,  22, 255 };
+Color logEdge   = {  55,  32,  10, 255 };
+Color roofCol   = {  42,  32,  20, 255 };
+Color stoneCol  = { 105, 100,  92, 255 };
+Color stoneEdge = {  65,  60,  55, 255 };
+Color doorCol   = {  65,  38,  14, 255 };
+Color winCol    = { 160, 190, 200, 180 };
+Color winFrame  = {  55,  32,  10, 255 };
+Color dirtCol   = {  95,  72,  45, 255 };
+Color porchCol  = { 105,  68,  28, 255 };
+ 
+const float W       = 6.0f;   // ширина дома по X
+const float D       = 5.0f;   // глубина дома по Z
+const float logH    = 0.38f;  // высота одного ряда брёвен
+const float baseY   = 0.42f;  // низ первого ряда (над фундаментом)
+const int   rows    = 10;
+const float wallTop = baseY + rows * logH; // ~4.22f — верх стен
+ 
+// ── ФУНДАМЕНТ ──────────────────────────────────────────────────────────────
+DrawCube     ({ hp.x,        hp.y + 0.2f,  hp.z        }, W+0.5f, 0.7f, D+0.5f, stoneCol);
+DrawCubeWires({ hp.x,        hp.y + 0.2f,  hp.z        }, W+0.5f, 0.7f, D+0.5f, stoneEdge);
+ 
+// ── СТЕНЫ (10 рядов брёвен) ────────────────────────────────────────────────
+for (int i = 0; i < rows; i++) {
+    float cy  = hp.y + baseY + i * logH + logH * 0.5f;
+    Color col = (i % 2 == 0) ? logA : logB;
+    DrawCube({ hp.x,          cy, hp.z + D/2.0f }, W,     logH*1.0f, 0.26f, col); // задняя
+    DrawCube({ hp.x,          cy, hp.z - D/2.0f }, W,     logH*1.0f, 0.26f, col); // передняя
+    DrawCube({ hp.x + W/2.0f, cy, hp.z          }, 0.26f, logH*1.0f, D,     col); // правая
+    DrawCube({ hp.x - W/2.0f, cy, hp.z          }, 0.26f, logH*1.0f, D,     col); // левая
 
-    // 1. Сруб (основание) — тёмно-коричневое дерево
-    Vector3 wallsCenter = { hp.x, hp.y + 1.75f, hp.z };
-    DrawCube(wallsCenter, 5.0f, 3.5f, 4.0f, (Color){115, 80, 55, 255});
-    DrawCubeWires(wallsCenter, 5.0f, 3.5f, 4.0f, (Color){60, 40, 25, 255});
-
-    // 2. Имитация брёвен — три горизонтальных тёмных полосы на стенах
-    for (int i = 0; i < 3; ++i) {
-        float by = hp.y + 0.5f + i * 1.0f;
-        DrawCube({hp.x, by, hp.z + 2.02f}, 5.05f, 0.08f, 0.05f, (Color){60, 40, 25, 255});
-        DrawCube({hp.x, by, hp.z - 2.02f}, 5.05f, 0.08f, 0.05f, (Color){60, 40, 25, 255});
-        DrawCube({hp.x + 2.52f, by, hp.z}, 0.05f, 0.08f, 4.05f, (Color){60, 40, 25, 255});
-        DrawCube({hp.x - 2.52f, by, hp.z}, 0.05f, 0.08f, 4.05f, (Color){60, 40, 25, 255});
-    }
-
-    // 3. Дверь (тёмный прямоугольник на передней стене, z = hp.z + 2.02)
-    DrawCube({hp.x - 0.8f, hp.y + 1.2f, hp.z + 2.03f},
-             1.2f, 2.0f, 0.05f, (Color){70, 45, 25, 255});
-    DrawCubeWires({hp.x - 0.8f, hp.y + 1.2f, hp.z + 2.03f},
-                  1.2f, 2.0f, 0.05f, (Color){30, 20, 10, 255});
-    // Ручка двери
-    DrawCube({hp.x - 0.3f, hp.y + 1.2f, hp.z + 2.07f},
-             0.1f, 0.1f, 0.05f, GOLD);
-
-    // 4. Окно (светло-голубой квадрат с крестовиной)
-    Vector3 winCenter = {hp.x + 1.2f, hp.y + 2.2f, hp.z + 2.03f};
-    DrawCube(winCenter, 1.0f, 1.0f, 0.05f, (Color){170, 210, 230, 255});
-    DrawCubeWires(winCenter, 1.0f, 1.0f, 0.05f, (Color){50, 35, 20, 255});
-    // Крестовина окна
-    DrawCube({winCenter.x, winCenter.y, winCenter.z + 0.03f},
-             1.0f, 0.06f, 0.02f, (Color){50, 35, 20, 255});
-    DrawCube({winCenter.x, winCenter.y, winCenter.z + 0.03f},
-             0.06f, 1.0f, 0.02f, (Color){50, 35, 20, 255});
-
-    // 5. Крыша — двускатная (две наклонные пластины)
-    float roofY = hp.y + 3.5f;
-    Color roofColor = (Color){130, 50, 40, 255};
-    Color roofWire  = (Color){70, 25, 20, 255};
-    // Передний/задний скат — наклонённые DrawCube через rlPushMatrix
-    rlPushMatrix();
-    rlTranslatef(hp.x, roofY + 0.75f, hp.z);
-    // Левый скат — наклонён по Z-оси
-    rlPushMatrix();
-    rlTranslatef(-1.3f, 0.0f, 0.0f);
-    rlRotatef(-35.0f, 0.0f, 0.0f, 1.0f);
-    DrawCube({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofColor);
-    DrawCubeWires({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofWire);
-    rlPopMatrix();
-    // Правый скат
-    rlPushMatrix();
-    rlTranslatef(1.3f, 0.0f, 0.0f);
-    rlRotatef(35.0f, 0.0f, 0.0f, 1.0f);
-    DrawCube({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofColor);
-    DrawCubeWires({0.0f, 0.0f, 0.0f}, 0.2f, 3.2f, 4.4f, roofWire);
-    rlPopMatrix();
-    rlPopMatrix();
-
-    // Конёк крыши (тёмная балка вдоль верха)
-    DrawCube({hp.x, roofY + 2.15f, hp.z}, 0.2f, 0.2f, 4.5f, (Color){50, 30, 20, 255});
-
-    // 6. Труба — на правой части крыши
-    Vector3 chimneyBase = {hp.x + 1.0f, hp.y + 4.5f, hp.z};
-    DrawCube(chimneyBase, 0.6f, 1.5f, 0.6f, (Color){90, 90, 95, 255});
-    DrawCubeWires(chimneyBase, 0.6f, 1.5f, 0.6f, (Color){40, 40, 45, 255});
-    // Верхний ободок трубы
-    DrawCube({chimneyBase.x, chimneyBase.y + 0.85f, chimneyBase.z},
-             0.75f, 0.15f, 0.75f, (Color){60, 60, 65, 255});
-
-    // 7. Лёгкий "коврик" перед дверью (тёмная плитка на земле)
-    DrawCube({hp.x - 0.8f, hp.y + 0.02f, hp.z + 2.4f},
-             1.4f, 0.04f, 0.6f, (Color){90, 70, 50, 255});
 }
+// ── КРЫША ──────────────────────────────────────────────────────────────────
+float rOvX = W/2.0f + 0.6f;
+float rOvZ = D/2.0f + 0.6f;
+float rTop = hp.y + wallTop + 2.4f;
+float rBase = hp.y + wallTop;
+ 
+Vector3 rA = { hp.x - rOvX, rBase, hp.z - rOvZ };
+Vector3 rB = { hp.x + rOvX, rBase, hp.z - rOvZ };
+Vector3 rC = { hp.x + rOvX, rBase, hp.z + rOvZ };
+Vector3 rE = { hp.x - rOvX, rBase, hp.z + rOvZ };
+Vector3 rP = { hp.x,        rTop,  hp.z         };
+ 
+DrawTriangle3D(rA, rB, rP, roofCol); DrawTriangle3D(rB, rA, rP, roofCol);
+DrawTriangle3D(rC, rE, rP, roofCol); DrawTriangle3D(rE, rC, rP, roofCol);
+DrawTriangle3D(rB, rC, rP, roofCol); DrawTriangle3D(rC, rB, rP, roofCol);
+DrawTriangle3D(rE, rA, rP, roofCol); DrawTriangle3D(rA, rE, rP, roofCol);
+ 
+// ── ТРУБА ──────────────────────────────────────────────────────────────────
+DrawCube     ({ hp.x+1.6f, rTop-0.5f,  hp.z-0.2f }, 0.65f, 1.8f, 0.65f, stoneCol);
+DrawCubeWires({ hp.x+1.6f, rTop-0.5f,  hp.z-0.2f }, 0.65f, 1.8f, 0.65f, stoneEdge);
+DrawCube     ({ hp.x+1.6f, rTop+0.45f, hp.z-0.2f }, 0.82f, 0.16f, 0.82f, stoneEdge);
+ 
+// ── КРЫЛЬЦО ────────────────────────────────────────────────────────────────
+float pFront = hp.z - D/2.0f; // передняя грань дома
+ 
+// Настил
+DrawCube     ({ hp.x, hp.y+0.46f, pFront-1.1f }, 3.0f, 0.16f, 2.0f, porchCol);
+DrawCubeWires({ hp.x, hp.y+0.46f, pFront-1.1f }, 3.0f, 0.16f, 2.0f, logEdge);
+// Ступеньки
+DrawCube({ hp.x, hp.y+0.14f, pFront-2.15f }, 2.2f, 0.28f, 0.28f, dirtCol);
+DrawCube({ hp.x, hp.y+0.30f, pFront-1.95f }, 2.2f, 0.28f, 0.28f, dirtCol);
+ 
+// ── ДВЕРЬ ──────────────────────────────────────────────────────────────────
+float doorCY = hp.y + wallTop * 0.42f;
+DrawCube({ hp.x, doorCY, pFront-0.16f }, 1.15f, wallTop*0.5f,  0.14f, logEdge); // рама
+DrawCube({ hp.x, doorCY, pFront-0.20f }, 0.9f,  wallTop*0.47f, 0.10f, doorCol); // полотно
+DrawSphere({ hp.x+0.36f, hp.y+wallTop*0.38f, pFront-0.28f }, 0.075f, {155,125,55,255}); // ручка
+ 
+// ── ОКНА ───────────────────────────────────────────────────────────────────
+float wFront = pFront - 0.18f;
+float wY     = hp.y + wallTop * 0.68f;
+ 
+// Левое окно
+DrawCube({ hp.x-1.95f, wY, wFront       }, 0.96f, 0.72f, 0.12f, winFrame);
+DrawCube({ hp.x-1.95f, wY, wFront-0.04f }, 0.76f, 0.54f, 0.06f, winCol);
+// Правое окно
+DrawCube({ hp.x+1.95f, wY, wFront       }, 0.96f, 0.72f, 0.12f, winFrame);
+DrawCube({ hp.x+1.95f, wY, wFront-0.04f }, 0.76f, 0.54f, 0.06f, winCol);
+// Боковое окно (правая стена)
+float wSide = hp.x + W/2.0f + 0.18f;
+DrawCube({ wSide,       wY, hp.z+0.5f }, 0.12f, 0.72f, 0.96f, winFrame);
+DrawCube({ wSide+0.04f, wY, hp.z+0.5f }, 0.06f, 0.54f, 0.76f, winCol);
+ 
+}    
 
 
 void World::SpawnParticles(Vector3 pos, Color color, int count, bool isHeart) {

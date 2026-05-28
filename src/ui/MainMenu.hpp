@@ -14,6 +14,7 @@ class MainMenu {
 private:
     MenuSettings& settings;
     int screenWidth, screenHeight;
+    float scale = 1.0f;
 
     Rectangle sheepBtnDec, sheepBtnInc, sheepBtnValue;
     Rectangle wolfBtnDec, wolfBtnInc, wolfBtnValue;

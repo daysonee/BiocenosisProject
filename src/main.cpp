@@ -369,6 +369,8 @@ int main() {
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
+        screenWidth = GetScreenWidth();
+        screenHeight = GetScreenHeight();
         if (dt > 0.033f) dt = 0.033f;
 
         UpdateMusicStream(backgroundMusic);
