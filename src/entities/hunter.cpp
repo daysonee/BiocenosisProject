@@ -17,6 +17,7 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     abilityCooldown = 0.0f;
 }
 
+
 Wolf* Hunter::FindNearestWolf(World* world) {
     Wolf* nearest = nullptr;
     float minDist = Config::Hunter::VISION_RADIUS;
