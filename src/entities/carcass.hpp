@@ -17,9 +17,9 @@ private:
     float age;
     float remainingFood;   // запас «мяса», уменьшается по мере поедания крабами
 
-    static constexpr float TOTAL_LIFETIME  = 45.0f;
-    static constexpr float FRESH_UNTIL     = 20.0f;
-    static constexpr float MEDIUM_UNTIL    = 35.0f;
+    static constexpr float TOTAL_LIFETIME  = 110.0f;
+    static constexpr float FRESH_UNTIL     = 35.0f;
+    static constexpr float MEDIUM_UNTIL    = 70.0f;
     static constexpr float INITIAL_FOOD    = 80.0f;  // сколько единиц пищи в трупе суммарно
 
 public:
