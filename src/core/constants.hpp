@@ -42,9 +42,9 @@ namespace Config {
 
     namespace Grass {
         // Кол-во на старте — увеличено почти вдвое для устойчивой экосистемы
-        constexpr int MEADOW_COUNT  = 1200; // обычная трава на лугах
-        constexpr int FERN_COUNT    = 700;  // папоротники в лесу
-        constexpr int COASTAL_COUNT = 350;  // прибрежная трава у воды
+        constexpr int MEADOW_COUNT  = 1200;
+        constexpr int FERN_COUNT    = 1200;  // 700 → 1200: больше еды в лесу, овцы заходят чаще
+        constexpr int COASTAL_COUNT = 350;
 
         // Regrowth — съеденная трава возвращается через 60-90 секунд.
         // Без этого экосистема выгорает за пару минут.
@@ -72,7 +72,7 @@ namespace Config {
 
     namespace Sheep {
         // Вдвое больше овец, с запасом для прибрежного спавна
-        constexpr int   INITIAL_COUNT    = 200;
+        constexpr int   INITIAL_COUNT    = 300;  // 200 → 300: больше еды для волков
 
         // Добавить внутрь namespace Config::Sheep
         enum class AgeStage {
@@ -173,20 +173,19 @@ namespace Config {
         constexpr float LEAD_MAX_TIME     = 0.4f; // 1.0 → 0.4
 
         // ── РАДИУС ОХОТЫ (на жертву) ─────────────────────────────
-        // Волк видит овцу только в этом радиусе. Без этого жертва
-        // ищется по всей карте и волки гонятся через полмира.
-        constexpr float HUNTING_RADIUS_BABY   = 30.0f;
+        // Взрослый волк — опытный охотник, видит дальше всех.
+        constexpr float HUNTING_RADIUS_BABY   = 20.0f;  // 30 → 20: детёныш неопытен
         constexpr float HUNTING_RADIUS_MEDIUM = 25.0f;
-        constexpr float HUNTING_RADIUS_ADULT  = 15.0f;
+        constexpr float HUNTING_RADIUS_ADULT  = 35.0f;  // 15 → 35: взрослый видит далеко
 
         // ── ВОЗРАСТНЫЕ СТАДИИ ─────────────────────────────────────
         enum class AgeStage { BABY, MEDIUM, ADULT };
 
-        constexpr float TIME_TO_GROW_BABY_MIN   = 180.0f;
-        constexpr float TIME_TO_GROW_BABY_MAX   = 240.0f;
-        constexpr float TIME_TO_GROW_MEDIUM_MIN = 360.0f;
-        constexpr float TIME_TO_GROW_MEDIUM_MAX = 420.0f;
-        constexpr float TIME_ADULT_LIFESPAN     = 540.0f;   // ~9 мин, итого ~18 мин (овцы ~22)
+        constexpr float TIME_TO_GROW_BABY_MIN   = 90.0f;   // 180 → 90:  ~1.5 мин
+        constexpr float TIME_TO_GROW_BABY_MAX   = 120.0f;  // 240 → 120: ~2 мин
+        constexpr float TIME_TO_GROW_MEDIUM_MIN = 180.0f;  // 360 → 180: ~3 мин
+        constexpr float TIME_TO_GROW_MEDIUM_MAX = 240.0f;  // 420 → 240: ~4 мин
+        constexpr float TIME_ADULT_LIFESPAN     = 1800.0f; // 900 → 1800: 30 мин
 
         // BABY-волчонок
         constexpr float BABY_SPEED_FACTOR    = 1.30f;
@@ -205,9 +204,10 @@ namespace Config {
         constexpr float SHAKE_AMPLITUDE   = 0.25f;  // визуальная амплитуда тряски
 
         // ── ГОЛОД И СМЕРТЬ ────────────────────────────────────────
-        constexpr float HUNGER_DECAY_RATE = 1.0f;   // ед/сек — было 2.0, теперь как у овец
-        constexpr float STARVATION_LIMIT  = 30.0f;  // 30 сек на нуле = смерть (было 15)
-        constexpr float HUNGER_HUNT_TRIGGER = 50.0f; // 5/10 — порог активной охоты
+        constexpr float HUNGER_DECAY_RATE        = 0.6f;
+        constexpr float STARVATION_LIMIT         = 60.0f;
+        constexpr float HUNGER_HUNT_TRIGGER      = 45.0f;  // 50 → 45: позже уходит на охоту
+        constexpr float HUNGER_RETURN_THRESHOLD  = 80.0f;  // 65 → 80: раньше возвращается в лес
 
         // Трава — плохая еда для волка: после её поедания
         // голод падает быстрее на короткое время
@@ -218,29 +218,27 @@ namespace Config {
         constexpr float GRASS_DESPERATE_RADIUS = 100.0f;
 
         // ── ДОМ СТАИ (патрулирование своей зоны) ─────────────────
-        constexpr float HOME_PATROL_RADIUS = 70.0f;
+        // Уменьшен: волки держатся компактнее → чаще встречают партнёра
+        constexpr float HOME_PATROL_RADIUS = 45.0f;  // 70 → 45
 
         // ── КОНФЛИКТ СТАЙ ────────────────────────────────────────
-        // Когда ADULT/MEDIUM встречает волка другой стаи (другой packId),
-        // начинается бой. BABY не участвуют. Один выживает → вожак.
-        constexpr float FIGHT_TRIGGER_RADIUS = 6.0f;
+        constexpr float FIGHT_TRIGGER_RADIUS = 2.5f;
         constexpr float FIGHT_CONTACT_DIST   = 1.5f;
-        constexpr float FIGHT_DAMAGE_RATE    = 25.0f;  // hp/сек при контакте
+        constexpr float FIGHT_DAMAGE_RATE    = 8.0f;   // 25 → 8: бой длится дольше, не мгновенная смерть
         constexpr float FIGHT_MAX_HEALTH     = 100.0f;
-        // Cooldown после боя, чтобы не атаковали тут же бабушку
-        constexpr float FIGHT_COOLDOWN       = 25.0f;
+        constexpr float FIGHT_COOLDOWN       = 90.0f;
 
         // ── РАЗМНОЖЕНИЕ ───────────────────────────────────────────
-        constexpr float MATING_HUNGER_THRESHOLD = 70.0f;
-        constexpr float MATING_COOLDOWN         = 60.0f;
+        constexpr float MATING_HUNGER_THRESHOLD = 50.0f;  // 55 → 50: порог совпадает с hunt trigger
+        constexpr float MATING_COOLDOWN         = 30.0f;  // 40 → 30
         constexpr float MATING_APPROACH_DIST    = 1.2f;
         constexpr float MATING_PROCESS_TIME     = 3.5f;
-        constexpr float MATING_SEARCH_RADIUS    = 40.0f;
+        constexpr float MATING_SEARCH_RADIUS    = 80.0f;
 
         // ── СПАВН СТАЯМИ В ЛЕСУ ──────────────────────────────────
-        constexpr int   PACK_COUNT    = 10;
-        constexpr int   PACK_SIZE_MIN = 3;
-        constexpr int   PACK_SIZE_MAX = 4;
+        constexpr int   PACK_COUNT    = 15;   // 10 → 15
+        constexpr int   PACK_SIZE_MIN = 4;    // 3 → 4
+        constexpr int   PACK_SIZE_MAX = 6;    // 4 → 6
         constexpr float PACK_RADIUS   = 6.0f;
     }
 

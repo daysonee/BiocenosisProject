@@ -8,18 +8,18 @@
 #include <rlgl.h>
 #include <cmath>
 
-// =====================================================================
-//                    КОНСТРУКТОР И ВСПОМОГАТЕЛЬНЫЕ
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          КОНСТРУКТОР
+// ═════════════════════════════════════════════════════════════════════════════
 
-Wolf::Wolf(Vector3 startPosition,
-           Config::Wolf::AgeStage startStage,
-           int wolfPackId) : Animal(startPosition) {
-    hunger     = 100.0f;
-    state      = AnimalState::WANDERING;
-    targetPrey = nullptr;
-    packId     = wolfPackId;
-    ageStage   = startStage;
+Wolf::Wolf(Vector3 startPos, Config::Wolf::AgeStage startStage, int wolfPackId)
+    : Animal(startPos)
+{
+    hunger    = 100.0f;
+    state     = AnimalState::IDLE;
+    packId    = wolfPackId;
+    ageStage  = startStage;
+    homePos   = startPos;
     fightHealth = Config::Wolf::FIGHT_MAX_HEALTH;
 
     switch (ageStage) {
@@ -41,20 +41,13 @@ Wolf::Wolf(Vector3 startPosition,
             break;
     }
 
-    matingCooldownTimer = (float)GetRandomValue(20, 60);
+    matingCooldownTimer = (float)GetRandomValue(10, 40);
     speed = Config::Wolf::SPEED_RUN * CurrentSpeedFactor();
-    homePos = startPosition;
-
-    // Сразу выбираем первую патрульную точку
-    float a = (float)GetRandomValue(0, 360) * DEG2RAD;
-    float r = Config::Wolf::HOME_PATROL_RADIUS * 0.4f
-            + (float)GetRandomValue(0, (int)(Config::Wolf::HOME_PATROL_RADIUS * 0.6f));
-    targetPosition.x = startPosition.x + cosf(a) * r;
-    targetPosition.z = startPosition.z + sinf(a) * r;
-    targetPosition.y = startPosition.y;
 }
 
-bool Wolf::IsNarrowWater(float, float, float, float, World*) { return true; }
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ВСПОМОГАТЕЛЬНЫЕ
+// ═════════════════════════════════════════════════════════════════════════════
 
 float Wolf::CurrentPounceReach() const {
     switch (ageStage) {
@@ -65,19 +58,9 @@ float Wolf::CurrentPounceReach() const {
     return Config::Wolf::POUNCE_REACH;
 }
 
-float Wolf::CurrentHuntingRadius() const {
-    switch (ageStage) {
-        case Config::Wolf::AgeStage::BABY:   return Config::Wolf::HUNTING_RADIUS_BABY;
-        case Config::Wolf::AgeStage::MEDIUM: return Config::Wolf::HUNTING_RADIUS_MEDIUM;
-        case Config::Wolf::AgeStage::ADULT:  return Config::Wolf::HUNTING_RADIUS_ADULT;
-    }
-    return Config::Wolf::HUNTING_RADIUS_MEDIUM;
-}
-
 float Wolf::CurrentLeadTime() const {
     return (ageStage == Config::Wolf::AgeStage::ADULT)
-           ? Config::Wolf::ADULT_LEAD_MAX_TIME
-           : Config::Wolf::LEAD_MAX_TIME;
+        ? Config::Wolf::ADULT_LEAD_MAX_TIME : Config::Wolf::LEAD_MAX_TIME;
 }
 
 float Wolf::CurrentSizeFactor() const {
@@ -90,14 +73,77 @@ float Wolf::CurrentSizeFactor() const {
 }
 
 float Wolf::CurrentSpeedFactor() const {
-    if (ageStage == Config::Wolf::AgeStage::BABY) return Config::Wolf::BABY_SPEED_FACTOR;
-    return 1.0f;
+    return (ageStage == Config::Wolf::AgeStage::BABY)
+        ? Config::Wolf::BABY_SPEED_FACTOR : 1.0f;
 }
 
 float Wolf::FullCooldown() const {
-    if (ageStage == Config::Wolf::AgeStage::BABY)
-        return Config::Wolf::POUNCE_COOLDOWN * Config::Wolf::BABY_COOLDOWN_MULT;
-    return Config::Wolf::POUNCE_COOLDOWN;
+    return (ageStage == Config::Wolf::AgeStage::BABY)
+        ? Config::Wolf::POUNCE_COOLDOWN * Config::Wolf::BABY_COOLDOWN_MULT
+        : Config::Wolf::POUNCE_COOLDOWN;
+}
+
+float Wolf::CurrentHuntingRadius() const {
+    switch (ageStage) {
+        case Config::Wolf::AgeStage::BABY:   return Config::Wolf::HUNTING_RADIUS_BABY;
+        case Config::Wolf::AgeStage::MEDIUM: return Config::Wolf::HUNTING_RADIUS_MEDIUM;
+        case Config::Wolf::AgeStage::ADULT:  return Config::Wolf::HUNTING_RADIUS_ADULT;
+    }
+    return Config::Wolf::HUNTING_RADIUS_MEDIUM;
+}
+
+// Волк находится в лесу если высота между SAND_LEVEL и BIOME_THRESHOLD
+bool Wolf::IsInForest(World* world) const {
+    float h = world->GetHeight(position.x, position.z);
+    return h > Config::World::SAND_LEVEL && h <= Config::World::BIOME_THRESHOLD;
+}
+
+void Wolf::PickForestWanderTarget(World* world) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    const float radius = Config::Wolf::HOME_PATROL_RADIUS;
+
+    for (int i = 0; i < 20; ++i) {
+        float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+        float r     = (float)GetRandomValue(5, (int)radius);
+        float tx = Clamp(homePos.x + cosf(angle) * r, -(float)halfMap + 5, (float)halfMap - 5);
+        float tz = Clamp(homePos.z + sinf(angle) * r, -(float)halfMap + 5, (float)halfMap - 5);
+        float ty = world->GetHeight(tx, tz);
+        if (ty > Config::World::SAND_LEVEL && ty <= Config::World::BIOME_THRESHOLD) {
+            targetPosition = { tx, ty, tz };
+            return;
+        }
+    }
+    // Фолбэк: homePos не в лесу — просто берём случайную точку рядом с позицией,
+    // не сбрасывая цель на саму позицию (это и вызывало топтание)
+    float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+    float r     = (float)GetRandomValue(15, 30);
+    float tx = Clamp(position.x + cosf(angle) * r, -(float)halfMap + 5, (float)halfMap - 5);
+    float tz = Clamp(position.z + sinf(angle) * r, -(float)halfMap + 5, (float)halfMap - 5);
+    targetPosition = { tx, world->GetHeight(tx, tz), tz };
+}
+
+void Wolf::PickMeadowHuntTarget(World* world) {
+    const int halfMap = Config::World::MAP_SIZE / 2;
+
+    // Ищем луга расширяющимися кольцами от текущей позиции
+    for (int radius = 20; radius <= 300; radius += 20) {
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+            float r     = (float)GetRandomValue(radius - 15, radius + 15);
+            float tx = Clamp(position.x + cosf(angle) * r, -(float)halfMap + 10, (float)halfMap - 10);
+            float tz = Clamp(position.z + sinf(angle) * r, -(float)halfMap + 10, (float)halfMap - 10);
+            float ty = world->GetHeight(tx, tz);
+            if (ty > Config::World::BIOME_THRESHOLD) {
+                targetPosition = { tx, ty, tz };
+                return;
+            }
+        }
+    }
+    // Фолбэк — карта может быть почти без лугов, берём случайную точку подальше
+    float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
+    float tx = Clamp(position.x + cosf(angle) * 150.0f, -(float)halfMap + 10, (float)halfMap - 10);
+    float tz = Clamp(position.z + sinf(angle) * 150.0f, -(float)halfMap + 10, (float)halfMap - 10);
+    targetPosition = { tx, world->GetHeight(tx, tz), tz };
 }
 
 void Wolf::PromoteToLeader() {
@@ -107,95 +153,75 @@ void Wolf::PromoteToLeader() {
     isLeader             = true;
 }
 
-bool Wolf::CanMate() const {
-    return ageStage             == Config::Wolf::AgeStage::ADULT
-        && hunger               >= Config::Wolf::MATING_HUNGER_THRESHOLD
-        && matingCooldownTimer  <= 0.0f
-        && mateTarget           == nullptr
-        && !isMating
-        && state                != AnimalState::HUNGRY
-        && state                != AnimalState::FIGHTING
-        && shakeTimer           <= 0.0f
-        && isAlive;
-}
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ДВИЖЕНИЕ
+// ═════════════════════════════════════════════════════════════════════════════
 
-// =====================================================================
-//                              ДВИЖЕНИЕ
-// =====================================================================
-
-void Wolf::MoveSwimming(float deltaTime, World* world) {
-    Vector3 direction = {
-        targetPosition.x - position.x, 0.0f,
-        targetPosition.z - position.z
-    };
-    float distance = Vector3Length(direction);
-    if (distance < 0.1f) {
+void Wolf::MoveSwimming(float dt, World* world) {
+    Vector3 dir = { targetPosition.x - position.x, 0.0f, targetPosition.z - position.z };
+    float dist = Vector3Length(dir);
+    if (dist < 0.1f) {
         position.y = fmaxf(world->GetHeight(position.x, position.z),
                            world->GetCurrentWaterLevel());
         return;
     }
 
-    Vector3 normDir = Vector3Normalize(direction);
-    float terrainHere = world->GetHeight(position.x, position.z);
-    bool inWaterNow = (terrainHere <= world->GetCurrentWaterLevel());
+    Vector3 norm = Vector3Normalize(dir);
+    float terrainH = world->GetHeight(position.x, position.z);
+    bool  inWater  = (terrainH <= world->GetCurrentWaterLevel());
+    float curSpeed = speed * (inWater ? Config::Wolf::SWIM_SPEED_FACTOR : 1.0f);
 
-    float curSpeed = speed * (inWaterNow ? Config::Wolf::SWIM_SPEED_FACTOR : 1.0f);
-    float step = curSpeed * deltaTime;
-
-    // Границы карты — волк никогда не выходит за пределы
     const int halfMap = Config::World::MAP_SIZE / 2;
-    const float minB = -(float)halfMap + 2.0f;
-    const float maxB =  (float)halfMap - 2.0f;
+    const float minB = -(float)halfMap + 2.0f, maxB = (float)halfMap - 2.0f;
 
-    position.x = Clamp(position.x + normDir.x * step, minB, maxB);
-    position.z = Clamp(position.z + normDir.z * step, minB, maxB);
-    position = world->ResolveTreeCollisions(position, 0.4f);
+    position.x = Clamp(position.x + norm.x * curSpeed * dt, minB, maxB);
+    position.z = Clamp(position.z + norm.z * curSpeed * dt, minB, maxB);
+    position   = world->ResolveTreeCollisions(position, 0.4f);
     position.x = Clamp(position.x, minB, maxB);
     position.z = Clamp(position.z, minB, maxB);
 
-    float terrainNew = world->GetHeight(position.x, position.z);
-    if (terrainNew <= world->GetCurrentWaterLevel()) {
+    float newH = world->GetHeight(position.x, position.z);
+    if (newH <= world->GetCurrentWaterLevel()) {
         position.y = world->GetCurrentWaterLevel() + 0.05f;
         if (!wasInWater) wasInWater = true;
-        swimSplashTimer -= deltaTime;
+        swimSplashTimer -= dt;
         if (swimSplashTimer <= 0.0f) {
             swimSplashTimer = 0.25f;
-            world->SpawnParticles(position, (Color){100, 160, 220, 255}, 4, false);
+            world->SpawnParticles(position, (Color){100,160,220,255}, 4, false);
         }
     } else {
-        position.y = terrainNew;
+        position.y = newH;
         if (wasInWater) {
             shakeTimer = Config::Wolf::SHAKE_DURATION;
-            world->SpawnParticles(position, (Color){100, 160, 220, 255}, 16, false);
+            world->SpawnParticles(position, (Color){100,160,220,255}, 16, false);
             wasInWater = false;
         }
     }
 }
 
-// =====================================================================
-//                              ПРЫЖОК
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ПРЫЖОК
+// ═════════════════════════════════════════════════════════════════════════════
 
 void Wolf::TryStartPounce(float distToPrey, World* world) {
-    if (pounceTimer > 0.0f) return;
-    if (pounceCooldownTimer > 0.0f) return;
+    if (pounceTimer > 0.0f || pounceCooldownTimer > 0.0f) return;
     if (distToPrey > Config::Wolf::POUNCE_RANGE) return;
     if (shakeTimer > 0.0f) return;
     if (world->GetHeight(position.x, position.z) <= world->GetCurrentWaterLevel()) return;
 
     pounceTimer         = Config::Wolf::POUNCE_DURATION;
     pounceCooldownTimer = FullCooldown();
-
-    Vector3 dustPos = { position.x, position.y + 0.1f, position.z };
-    world->SpawnParticles(dustPos, (Color){150, 130, 100, 255}, 6, false);
+    world->SpawnParticles(
+        { position.x, position.y + 0.1f, position.z },
+        (Color){150,130,100,255}, 6, false);
 }
 
-// =====================================================================
-//                              ВОЗРАСТ
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ВОЗРАСТ
+// ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::UpdateAge(float deltaTime, World* world) {
-    ageTimer += deltaTime;
+void Wolf::UpdateAge(float dt, World* world) {
+    ageTimer += dt;
     if (ageTimer < maxAgeInCurrentStage) return;
 
     if (ageStage == Config::Wolf::AgeStage::BABY) {
@@ -204,14 +230,12 @@ void Wolf::UpdateAge(float deltaTime, World* world) {
             (int)Config::Wolf::TIME_TO_GROW_MEDIUM_MIN,
             (int)Config::Wolf::TIME_TO_GROW_MEDIUM_MAX);
         ageTimer = 0.0f;
-
-        // Если у стаи нет вожака — новоиспечённый MEDIUM сразу его наследует
+        // Проверяем лидера стаи
         bool packHasLeader = false;
         for (const auto& e : world->GetEntities()) {
             if (!e->IsAlive() || e.get() == this) continue;
             Wolf* w = dynamic_cast<Wolf*>(e.get());
-            if (w && w->packId == packId
-                && w->ageStage == Config::Wolf::AgeStage::ADULT) {
+            if (w && w->packId == packId && w->ageStage == Config::Wolf::AgeStage::ADULT) {
                 packHasLeader = true; break;
             }
         }
@@ -221,465 +245,470 @@ void Wolf::UpdateAge(float deltaTime, World* world) {
         maxAgeInCurrentStage = Config::Wolf::TIME_ADULT_LIFESPAN;
         ageTimer = 0.0f;
     } else {
-        // ADULT — смерть от старости. Серые партиклы (как у овец).
         diedOfOldAge = true;
-        world->SpawnParticles(position, (Color){180, 180, 180, 255}, 14, false);
+        world->SpawnParticles(position, (Color){180,180,180,255}, 14, false);
         Die(DeathCause::OLD_AGE);
     }
 }
 
-// =====================================================================
-//                            РАЗМНОЖЕНИЕ
-// =====================================================================
-
-void Wolf::TryAttemptMating(float deltaTime, World* world) {
-    if (CanMate()) {
-        Wolf* bestMate = nullptr;
-        float bestDist = Config::Wolf::MATING_SEARCH_RADIUS;
-        for (const auto& entity : world->GetEntities()) {
-            Wolf* candidate = dynamic_cast<Wolf*>(entity.get());
-            if (!candidate || candidate == this || !candidate->CanMate()) continue;
-            float d = Vector3Distance(position, candidate->GetPosition());
-            if (d < bestDist) { bestDist = d; bestMate = candidate; }
-        }
-        if (bestMate) {
-            mateTarget = bestMate;
-            isMating = true;
-            bestMate->mateTarget = this;
-            bestMate->isMating = true;
-        }
-    }
-
-    if (mateTarget && mateTarget->IsAlive()) {
-        if (mateTarget->hunger < Config::Wolf::MATING_HUNGER_THRESHOLD) {
-            isMating = false; matingProgressTimer = 0.0f;
-            mateTarget->isMating = false;
-            mateTarget->mateTarget = nullptr;
-            mateTarget = nullptr;
-            return;
-        }
-
-        targetPosition = mateTarget->GetPosition();
-        float dist = Vector3Distance(position, mateTarget->GetPosition());
-
-        if (dist > Config::Wolf::MATING_APPROACH_DIST) {
-            MoveSwimming(deltaTime, world);
-            matingProgressTimer = 0.0f;
-        } else {
-            matingProgressTimer += deltaTime;
-            if (fmodf(matingProgressTimer, 0.5f) < deltaTime) {
-                Vector3 heartPos = { position.x, position.y + 2.0f, position.z };
-                world->SpawnParticles(heartPos, (Color){180, 180, 180, 255}, 3, true);
-            }
-
-            if (matingProgressTimer >= Config::Wolf::MATING_PROCESS_TIME
-                && this > mateTarget)
-            {
-                Vector3 babyPos = {
-                    (position.x + mateTarget->GetPosition().x) * 0.5f,
-                    0.0f,
-                    (position.z + mateTarget->GetPosition().z) * 0.5f
-                };
-                babyPos.y = world->GetHeight(babyPos.x, babyPos.z);
-
-                auto baby = std::make_unique<Wolf>(
-                    babyPos, Config::Wolf::AgeStage::BABY, packId);
-                baby->SetHomePos(homePos); // наследует дом стаи
-                world->QueueEntity(std::move(baby));
-
-                matingCooldownTimer = Config::Wolf::MATING_COOLDOWN;
-                mateTarget->matingCooldownTimer = Config::Wolf::MATING_COOLDOWN;
-                isMating = false;
-                mateTarget->isMating = false;
-                matingProgressTimer = 0.0f;
-                mateTarget->matingProgressTimer = 0.0f;
-                mateTarget->mateTarget = nullptr;
-                mateTarget = nullptr;
-                state = AnimalState::IDLE;
-            }
-        }
-    } else if (mateTarget) {
-        isMating = false; matingProgressTimer = 0.0f;
-        mateTarget = nullptr;
-    }
-}
-
-// =====================================================================
-//                              ПОИСК
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ПОИСК
+// ═════════════════════════════════════════════════════════════════════════════
 
 Sheep* Wolf::FindNearestSheepInRadius(World* world, float radius) const {
-    Sheep* best = nullptr;
-    float bestDist = radius;
-    for (const auto& entity : world->GetEntities()) {
-        if (!entity->IsAlive()) continue;
-        Sheep* sheep = dynamic_cast<Sheep*>(entity.get());
-        if (!sheep) continue;
-        float d = Vector3Distance(position, sheep->GetPosition());
-        if (d < bestDist) { bestDist = d; best = sheep; }
+    Sheep* best = nullptr; float bestD = radius;
+    for (const auto& e : world->GetEntities()) {
+        if (!e->IsAlive()) continue;
+        Sheep* s = dynamic_cast<Sheep*>(e.get());
+        if (!s) continue;
+        float d = Vector3Distance(position, s->GetPosition());
+        if (d < bestD) { bestD = d; best = s; }
     }
     return best;
 }
 
 Carcass* Wolf::FindNearestCarcassInRadius(World* world, float radius) const {
-    Carcass* best = nullptr;
-    float bestDist = radius;
-    for (const auto& entity : world->GetEntities()) {
-        if (!entity->IsAlive()) continue;
-        Carcass* c = dynamic_cast<Carcass*>(entity.get());
+    Carcass* best = nullptr; float bestD = radius;
+    for (const auto& e : world->GetEntities()) {
+        if (!e->IsAlive()) continue;
+        Carcass* c = dynamic_cast<Carcass*>(e.get());
         if (!c) continue;
         float d = Vector3Distance(position, c->GetPosition());
-        if (d < bestDist) { bestDist = d; best = c; }
+        if (d < bestD) { bestD = d; best = c; }
     }
     return best;
 }
 
-Wolf* Wolf::FindEnemyWolfNearby(World* world) const {
-    // Только ADULT/MEDIUM, той же возрастной категории (BABY не дерутся)
+// Ищет любого чужого волка (другой packId) ADULT или MEDIUM в радиусе
+Wolf* Wolf::FindNearestOtherWolf(World* world, float radius) const {
     if (ageStage == Config::Wolf::AgeStage::BABY) return nullptr;
-    if (fightCooldownTimer > 0.0f) return nullptr;
-
-    Wolf* best = nullptr;
-    float bestDist = Config::Wolf::FIGHT_TRIGGER_RADIUS;
-    for (const auto& entity : world->GetEntities()) {
-        if (!entity->IsAlive()) continue;
-        Wolf* w = dynamic_cast<Wolf*>(entity.get());
+    Wolf* best = nullptr; float bestD = radius;
+    for (const auto& e : world->GetEntities()) {
+        if (!e->IsAlive()) continue;
+        Wolf* w = dynamic_cast<Wolf*>(e.get());
         if (!w || w == this) continue;
-        if (w->packId == packId) continue;                  // своя стая
-        if (w->ageStage == Config::Wolf::AgeStage::BABY) continue; // дети не дерутся
+        if (w->ageStage == Config::Wolf::AgeStage::BABY) continue;
+        if (w->packId == packId) continue; // своя стая
         if (w->fightCooldownTimer > 0.0f) continue;
+        if (w->isMating) continue;
         float d = Vector3Distance(position, w->GetPosition());
-        if (d < bestDist) { bestDist = d; best = w; }
+        if (d < bestD) { bestD = d; best = w; }
     }
     return best;
 }
 
-// =====================================================================
-//                          ПАТРУЛИРОВАНИЕ
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                      СОСТОЯНИЕ: IDLE (сытый, в лесу)
+// ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::PickNewPatrolTarget(World* world) {
-    int halfMap = Config::World::MAP_SIZE / 2;
-    // 5 попыток найти точку на суше
-    for (int i = 0; i < 5; ++i) {
-        float a = (float)GetRandomValue(0, 360) * DEG2RAD;
-        float r = (float)GetRandomValue(
-            (int)(Config::Wolf::HOME_PATROL_RADIUS * 0.2f),
-            (int)Config::Wolf::HOME_PATROL_RADIUS);
-        float tx = homePos.x + cosf(a) * r;
-        float tz = homePos.z + sinf(a) * r;
-        tx = Clamp(tx, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-        tz = Clamp(tz, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-        float ty = world->GetHeight(tx, tz);
-        if (ty > world->GetCurrentWaterLevel()) {
-            targetPosition = { tx, ty, tz };
+void Wolf::UpdateIdle(float dt, World* world) {
+    // Если проголодался — на охоту
+    if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
+        state = AnimalState::HUNTING;
+        PickMeadowHuntTarget(world);
+        return;
+    }
+    // IDLE — просто ждём короткое время, потом бродим.
+    // Без таймера состояние переключается каждый кадр и сбрасывает цель.
+    idleTimer -= dt;
+    if (idleTimer <= 0.0f) {
+        idleTimer = (float)GetRandomValue(20, 50) / 10.0f; // 2-5 сек
+        state = AnimalState::WANDERING;
+        PickForestWanderTarget(world);
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//              СОСТОЯНИЕ: WANDERING (бродит по лесу, ищет партнёра)
+// ═════════════════════════════════════════════════════════════════════════════
+
+void Wolf::UpdateWandering(float dt, World* world) {
+    // Голод — прервать и идти на охоту
+    if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
+        state = AnimalState::HUNTING;
+        PickMeadowHuntTarget(world);
+        return;
+    }
+
+    // Территориальная атака: овца в лесу — атакуем независимо от голода
+    {
+        Sheep* intruder = FindNearestSheepInRadius(world, 20.0f);
+        if (intruder) {
+            float sh = world->GetHeight(
+                intruder->GetPosition().x, intruder->GetPosition().z);
+            bool sheepInForest = (sh > Config::World::SAND_LEVEL
+                               && sh <= Config::World::BIOME_THRESHOLD);
+            if (sheepInForest) {
+                targetPrey = intruder;
+                state      = AnimalState::HUNTING;
+                return;
+            }
+        }
+    }
+
+    // Ищем партнёра среди ВСЕХ волков (своя стая + чужие)
+    if (CanMate()) {
+        // Сначала ищем в своей стае
+        Wolf* packMate = nullptr;
+        float bestD = Config::Wolf::MATING_SEARCH_RADIUS;
+        for (const auto& e : world->GetEntities()) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (!w || w == this || !w->CanMate()) continue;
+            if (w->packId != packId) continue;
+            float d = Vector3Distance(position, w->GetPosition());
+            if (d < bestD) { bestD = d; packMate = w; }
+        }
+
+        if (packMate) {
+            // Своя стая — всегда спариваемся
+            mateTarget         = packMate;
+            isMating           = true;
+            packMate->mateTarget = this;
+            packMate->isMating   = true;
+            state = AnimalState::MATING;
+            return;
+        }
+
+        // Чужой волк поблизости — бросок 60/40
+        Wolf* outsider = FindNearestOtherWolf(world, Config::Wolf::MATING_SEARCH_RADIUS);
+        if (outsider && outsider->CanMate()) {
+            if (GetRandomValue(0, 99) < 60) {
+                // 60% — спариваемся
+                mateTarget           = outsider;
+                isMating             = true;
+                outsider->mateTarget = this;
+                outsider->isMating   = true;
+                state = AnimalState::MATING;
+            } else {
+                // 40% — атакуем
+                if (fightCooldownTimer <= 0.0f && !outsider->isMating) {
+                    state              = AnimalState::FIGHTING;
+                    fightTarget        = outsider;
+                    outsider->state    = AnimalState::FIGHTING;
+                    outsider->fightTarget = this;
+                }
+            }
             return;
         }
     }
-    // Если не нашли — целимся прямо в homePos
-    targetPosition = { homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z };
-}
 
-// =====================================================================
-//                          STATE: IDLE / WANDER
-// =====================================================================
-
-void Wolf::UpdateIdle(float dt, World* world) {
-    // IDLE = всегда быстро уходит в патруль с новой целью
-    PickNewPatrolTarget(world);
-    state = AnimalState::WANDERING;
-}
-
-void Wolf::UpdateWander(float dt, World* world) {
+    // Двигаемся к текущей цели
     MoveSwimming(dt, world);
-    Vector2 flatPos    = { position.x, position.z };
-    Vector2 flatTarget = { targetPosition.x, targetPosition.z };
-    if (Vector2Distance(flatPos, flatTarget) < 0.7f) {
-        // Достигли — выбираем новую сразу, не через IDLE-возврат
-        PickNewPatrolTarget(world);
+
+    float d2d = Vector2Distance({position.x, position.z},
+                                {targetPosition.x, targetPosition.z});
+    if (d2d < 2.0f) {
+        // Дошли — выбираем новую точку в лесу и коротко отдыхаем
+        state     = AnimalState::IDLE;
+        idleTimer = (float)GetRandomValue(10, 30) / 10.0f;
     }
 }
 
-// =====================================================================
-//                          STATE: HUNGRY
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//              СОСТОЯНИЕ: HUNTING (голодный, вышел на луга)
+// ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::UpdateHunt(float dt, World* world) {
+void Wolf::UpdateHunting(float dt, World* world) {
+    // Наелся — возвращаемся в лес и сразу ищем партнёра
+    if (hunger >= Config::Wolf::HUNGER_RETURN_THRESHOLD) {
+        state = AnimalState::MATING; // сразу пробуем найти партнёра
+        matingCooldownTimer = 0.0f;  // небольшой сброс чтобы не ждать
+        PickForestWanderTarget(world);
+        return;
+    }
+
     float huntR = CurrentHuntingRadius();
 
-    // ════════════════════════════════════════════════════════════════
-    // ПРИОРИТЕТ 1: ТРУП. Самый высокий — волки идут к нему первым делом.
-    // На трупы НЕ прыгают, просто подходят и едят.
-    // ════════════════════════════════════════════════════════════════
-    Carcass* nearestCarcass = FindNearestCarcassInRadius(world, huntR);
-    if (nearestCarcass) {
-        Vector3 carcPos = nearestCarcass->GetPosition();
-        targetPosition  = carcPos;
-
-        // Пока бежим к трупу — никаких прыжков
+    // Приоритет 1: труп — лёгкая еда
+    Carcass* carcass = FindNearestCarcassInRadius(world, huntR);
+    if (carcass) {
+        targetPosition = carcass->GetPosition();
         MoveSwimming(dt, world);
-
-        float dist = Vector3Distance(position, carcPos);
-        if (dist < 1.5f) {
-            // Едим труп
-            float nutrition = nearestCarcass->GetNutrition();
-            bool rotten     = nearestCarcass->IsRotten();
-
+        if (Vector3Distance(position, carcass->GetPosition()) < 1.5f) {
+            float nutrition = carcass->GetNutrition();
+            bool  rotten    = carcass->IsRotten();
             hunger = fminf(hunger + nutrition, 100.0f);
-
-            // Партиклы поедания (тёмно-красные брызги + куски)
-            Vector3 fp = carcPos; fp.y += 0.3f;
-            world->SpawnParticles(fp, (Color){140, 60, 50, 255}, 10, false);
-            world->SpawnParticles(fp, (Color){90, 70, 50, 255}, 6,  false);
-
-            nearestCarcass->Die();
-
-            // 50% шанс отравления от несвежего трупа
+            Vector3 fp = carcass->GetPosition(); fp.y += 0.3f;
+            world->SpawnParticles(fp, (Color){140,60,50,255}, 10, false);
+            world->SpawnParticles(fp, (Color){90,70,50,255},  6,  false);
+            carcass->Die();
             if (rotten && GetRandomValue(0, 99) < 50) {
-                // Зелёные «гнилостные» партиклы + смерть
-                world->SpawnParticles(position, (Color){80, 130, 60, 255}, 18, false);
-                world->SpawnParticles(position, (Color){60, 90, 40, 255}, 10, false);
+                world->SpawnParticles(position, (Color){80,130,60,255}, 18, false);
                 Die(DeathCause::OTHER);
-                return;
             }
-
-            // После еды — снова приоритеты: есть ли ещё пища рядом?
-            // (на следующем тике HUNGRY сам пересчитает)
-            if (hunger >= 90.0f) {
-                // Достаточно сыт — возврат домой
-                targetPosition = {
-                    homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
-                };
-                state = AnimalState::WANDERING;
-            }
-            // Иначе остаёмся в HUNGRY и продолжаем искать
         }
         return;
     }
 
-    // ════════════════════════════════════════════════════════════════
-    // ПРИОРИТЕТ 2: ОВЦА. Активная охота — преследование, прыжок.
-    // ════════════════════════════════════════════════════════════════
+    // Приоритет 2: овца
     Sheep* prevTarget = targetPrey;
     targetPrey = FindNearestSheepInRadius(world, huntR);
-
     if (targetPrey != prevTarget) hasPrevPreyPos = false;
 
     if (targetPrey) {
         Vector3 preyPos = targetPrey->GetPosition();
-        float closestDistance = Vector3Distance(position, preyPos);
+        float   dist    = Vector3Distance(position, preyPos);
 
+        // Упреждение
         Vector3 leadPos = preyPos;
         float leadT = CurrentLeadTime();
         if (hasPrevPreyPos && dt > 0.001f) {
-            Vector3 preyVel = {
+            Vector3 vel = {
                 (preyPos.x - prevPreyPos.x) / dt, 0.0f,
                 (preyPos.z - prevPreyPos.z) / dt
             };
-            float t = closestDistance / fmaxf(speed, 0.1f);
-            if (t > leadT) t = leadT;
-            leadPos.x = preyPos.x + preyVel.x * t;
-            leadPos.z = preyPos.z + preyVel.z * t;
+            float t = fminf(dist / fmaxf(speed, 0.1f), leadT);
+            leadPos.x = preyPos.x + vel.x * t;
+            leadPos.z = preyPos.z + vel.z * t;
             leadPos.y = world->GetHeight(leadPos.x, leadPos.z);
         }
-        prevPreyPos = preyPos;
+        prevPreyPos    = preyPos;
         hasPrevPreyPos = true;
-
         targetPosition = leadPos;
-        TryStartPounce(closestDistance, world);
+
+        TryStartPounce(dist, world);
         MoveSwimming(dt, world);
 
-        float reach = (pounceTimer > 0.0f)
-                      ? CurrentPounceReach()
-                      : Config::Wolf::ATTACK_RADIUS;
-        if (ageStage == Config::Wolf::AgeStage::ADULT) {
+        float reach = (pounceTimer > 0.0f) ? CurrentPounceReach() : Config::Wolf::ATTACK_RADIUS;
+        if (ageStage == Config::Wolf::AgeStage::ADULT)
             reach = fmaxf(reach, Config::Wolf::ADULT_POUNCE_REACH);
-        }
 
-        float distAfter = Vector3Distance(position, targetPrey->GetPosition());
-        if (distAfter < reach) {
-            Vector3 killPos = targetPrey->GetPosition();
-            killPos.y += 0.5f;
-            world->SpawnParticles(killPos, (Color){200, 30, 30, 255}, 20, false);
-            world->SpawnParticles(killPos, (Color){120, 10, 10, 255}, 10, false);
+        if (Vector3Distance(position, targetPrey->GetPosition()) < reach) {
+            Vector3 killPos = targetPrey->GetPosition(); killPos.y += 0.5f;
+            world->SpawnParticles(killPos, (Color){200,30,30,255}, 20, false);
+            world->SpawnParticles(killPos, (Color){120,10,10,255}, 10, false);
             targetPrey->Die(DeathCause::EATEN_BY_WOLF);
 
             if (ageStage == Config::Wolf::AgeStage::BABY) {
                 babyKillCount++;
-                hunger = fminf(hunger + 50.0f, 100.0f); // 5/10
+                hunger = fminf(hunger + 60.0f, 100.0f);
                 if (babyKillCount >= Config::Wolf::BABY_KILLS_TO_FULL) {
                     babyKillCount = 0;
                     pounceCooldownTimer = FullCooldown();
-                    state = AnimalState::WANDERING;
-                    PickNewPatrolTarget(world);
-                } else {
-                    pounceCooldownTimer = Config::Wolf::POUNCE_COOLDOWN * 0.5f;
                 }
             } else {
-                hunger = fminf(hunger + 50.0f, 100.0f); // 5/10
+                hunger = fminf(hunger + 60.0f, 100.0f);
                 pounceCooldownTimer = FullCooldown();
-
-                if (hunger < 90.0f) {
-                    // Ещё голодны после одной овцы — ищем ещё
-                    // (на следующем тике HUNGRY переоценит приоритеты)
-                } else {
-                    targetPosition = {
-                        homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
-                    };
-                    state = AnimalState::WANDERING;
-                }
             }
-
-            targetPrey = nullptr;
+            targetPrey     = nullptr;
             hasPrevPreyPos = false;
-            pounceTimer = 0.0f;
-        }
-        return;
-    }
+            pounceTimer    = 0.0f;
 
-    // ════════════════════════════════════════════════════════════════
-    // ПРИОРИТЕТ 3: ТРАВА. Только когда и трупов, и овец нет рядом.
-    // На траву НЕ прыгают. При сильном голоде ищем шире.
-    // ════════════════════════════════════════════════════════════════
-    float grassR = huntR;
-    if (hunger < Config::Wolf::DESPERATE_HUNGER) {
-        // Очень голодный — ищет траву далеко
-        grassR = fmaxf(grassR, Config::Wolf::GRASS_DESPERATE_RADIUS);
-    }
-    Vector3 grassPos;
-    Config::Grass::Type grassType;
-    int grassIdx = world->FindNearestGrass(position, grassR, grassPos, grassType);
-    if (grassIdx >= 0) {
-        targetPosition = grassPos;
-        MoveSwimming(dt, world);
-
-        Vector2 fp = { position.x, position.z };
-        Vector2 fg = { grassPos.x, grassPos.z };
-        if (Vector2Distance(fp, fg) < 1.0f) {
-            world->EatGrass(grassIdx);  // зелёные партиклы уже спавнятся в EatGrass
-            hunger = fminf(hunger + 10.0f, 100.0f); // 1/10
-            // Эффект травы: голод теперь падает быстрее на 30 сек
-            grassEffectTimer = Config::Wolf::GRASS_EFFECT_DURATION;
-
-            if (hunger >= 70.0f) {
-                targetPosition = {
-                    homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z
-                };
+            // Если убили в лесу (территориальная охота) — возвращаемся бродить
+            if (IsInForest(world)) {
                 state = AnimalState::WANDERING;
+                PickForestWanderTarget(world);
             }
         }
         return;
     }
 
-    // Совсем ничего нет — возврат домой
-    hasPrevPreyPos = false;
-    targetPosition = { homePos.x, world->GetHeight(homePos.x, homePos.z), homePos.z };
-    state = AnimalState::WANDERING;
+    // Овец нет — продолжаем идти по лугам в поисках
+    if (Vector3Distance(position, targetPosition) < 3.0f)
+        PickMeadowHuntTarget(world);
+    MoveSwimming(dt, world);
 }
 
-// =====================================================================
-//                       STATE: FIGHTING (конфликт стай)
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//              СОСТОЯНИЕ: MATING (ищет/идёт к партнёру)
+// ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::UpdateFight(float dt, World* world) {
-    if (!fightTarget || !fightTarget->IsAlive()) {
-        // Противник уже мёртв — мы победили
-        fightTarget = nullptr;
-        fightHealth = Config::Wolf::FIGHT_MAX_HEALTH;
-        fightCooldownTimer = Config::Wolf::FIGHT_COOLDOWN;
-        state = AnimalState::WANDERING;
-        PickNewPatrolTarget(world);
+void Wolf::UpdateMating(float dt, World* world) {
+    // Голод прерывает спаривание
+    if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
+        if (mateTarget) {
+            mateTarget->isMating   = false;
+            mateTarget->mateTarget = nullptr;
+        }
+        isMating           = false;
+        matingProgressTimer = 0.0f;
+        mateTarget         = nullptr;
+        state = AnimalState::HUNTING;
+        PickMeadowHuntTarget(world);
         return;
     }
 
-    Vector3 oppPos = fightTarget->GetPosition();
-    float dist = Vector3Distance(position, oppPos);
-
-    targetPosition = oppPos;
-    MoveSwimming(dt, world);
-
-    if (dist < Config::Wolf::FIGHT_CONTACT_DIST) {
-        // Взаимный урон
-        fightHealth -= Config::Wolf::FIGHT_DAMAGE_RATE * dt;
-        // Партиклы потасовки (коричнево-серые)
-        if (GetRandomValue(0, 100) < 8) {
-            Vector3 fp = {
-                (position.x + oppPos.x) * 0.5f,
-                position.y + 0.5f,
-                (position.z + oppPos.z) * 0.5f
-            };
-            world->SpawnParticles(fp, (Color){140, 110, 80, 255}, 4, false);
+    // Если нет партнёра — ищем
+    if (!mateTarget) {
+        if (!CanMate()) {
+            // Откат ещё идёт или другое условие — просто бродим
+            state = AnimalState::WANDERING;
+            PickForestWanderTarget(world);
+            return;
         }
 
+        // Поиск: сначала своя стая, потом чужие
+        Wolf* best = nullptr; float bestD = Config::Wolf::MATING_SEARCH_RADIUS;
+        for (const auto& e : world->GetEntities()) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (!w || w == this || !w->CanMate()) continue;
+            float d = Vector3Distance(position, w->GetPosition());
+            if (d < bestD) { bestD = d; best = w; }
+        }
+
+        if (best) {
+            bool samepack = (best->packId == packId);
+            bool doMate   = samepack || (GetRandomValue(0, 99) < 60);
+
+            if (doMate) {
+                mateTarget       = best;
+                isMating         = true;
+                best->mateTarget = this;
+                best->isMating   = true;
+            } else {
+                // 40% — атакуем чужого
+                if (fightCooldownTimer <= 0.0f && !best->isMating) {
+                    state           = AnimalState::FIGHTING;
+                    fightTarget     = best;
+                    best->state     = AnimalState::FIGHTING;
+                    best->fightTarget = this;
+                }
+                return;
+            }
+        } else {
+            // Партнёра нет — бродим по лесу
+            state = AnimalState::WANDERING;
+            PickForestWanderTarget(world);
+            return;
+        }
+    }
+
+    // Партнёр мёртв или передумал
+    if (!mateTarget->IsAlive() || !mateTarget->isMating
+        || mateTarget->state == AnimalState::FIGHTING) {
+        isMating           = false;
+        matingProgressTimer = 0.0f;
+        mateTarget         = nullptr;
+        state = AnimalState::WANDERING;
+        PickForestWanderTarget(world);
+        return;
+    }
+
+    // Идём к партнёру
+    targetPosition = mateTarget->GetPosition();
+    float dist = Vector3Distance(position, mateTarget->GetPosition());
+
+    if (dist > Config::Wolf::MATING_APPROACH_DIST) {
+        MoveSwimming(dt, world);
+        matingProgressTimer = 0.0f;
+    } else {
+        matingProgressTimer += dt;
+
+        // Сердечки каждые 0.5 сек
+        if (fmodf(matingProgressTimer, 0.5f) < dt) {
+            world->SpawnParticles(
+                {position.x, position.y + 2.0f, position.z},
+                (Color){180,180,180,255}, 3, true);
+        }
+
+        if (matingProgressTimer >= Config::Wolf::MATING_PROCESS_TIME && this > mateTarget) {
+            // Спавн детёныша
+            Vector3 babyPos = {
+                (position.x + mateTarget->GetPosition().x) * 0.5f, 0.0f,
+                (position.z + mateTarget->GetPosition().z) * 0.5f
+            };
+            babyPos.y = world->GetHeight(babyPos.x, babyPos.z);
+
+            // Детёныш входит в стаю отца (того кто this > mateTarget, т.е. инициатор)
+            auto baby = std::make_unique<Wolf>(babyPos, Config::Wolf::AgeStage::BABY, packId);
+            baby->SetHomePos(homePos);
+            world->QueueEntity(std::move(baby));
+
+            matingCooldownTimer             = Config::Wolf::MATING_COOLDOWN;
+            mateTarget->matingCooldownTimer = Config::Wolf::MATING_COOLDOWN;
+            isMating                        = false;
+            mateTarget->isMating            = false;
+            matingProgressTimer             = 0.0f;
+            mateTarget->matingProgressTimer = 0.0f;
+            mateTarget->mateTarget          = nullptr;
+            mateTarget                      = nullptr;
+
+            state = AnimalState::IDLE;
+        }
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+//              СОСТОЯНИЕ: FIGHTING (бой)
+// ═════════════════════════════════════════════════════════════════════════════
+
+void Wolf::UpdateFighting(float dt, World* world) {
+    if (!fightTarget || !fightTarget->IsAlive()) {
+        fightTarget        = nullptr;
+        fightHealth        = Config::Wolf::FIGHT_MAX_HEALTH;
+        fightCooldownTimer = Config::Wolf::FIGHT_COOLDOWN;
+        state = AnimalState::WANDERING;
+        PickForestWanderTarget(world);
+        return;
+    }
+
+    targetPosition = fightTarget->GetPosition();
+    MoveSwimming(dt, world);
+
+    float dist = Vector3Distance(position, fightTarget->GetPosition());
+    if (dist < Config::Wolf::FIGHT_CONTACT_DIST) {
+        fightHealth -= Config::Wolf::FIGHT_DAMAGE_RATE * dt;
+        if (GetRandomValue(0, 100) < 8) {
+            Vector3 fp = {
+                (position.x + fightTarget->GetPosition().x) * 0.5f,
+                position.y + 0.5f,
+                (position.z + fightTarget->GetPosition().z) * 0.5f
+            };
+            world->SpawnParticles(fp, (Color){140,110,80,255}, 4, false);
+        }
         if (fightHealth <= 0.0f) {
-            // Мы проиграли. Победитель (fightTarget) обработает merge
-            // в своём UpdateFight на следующем тике.
-            world->SpawnParticles(position, (Color){150, 60, 60, 255}, 12, false);
+            world->SpawnParticles(position, (Color){150,60,60,255}, 12, false);
             diedInFight = true;
             Die(DeathCause::FIGHT);
         }
     }
 }
 
-// =====================================================================
-//                              ОСНОВНОЙ UPDATE
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ОСНОВНОЙ UPDATE
+// ═════════════════════════════════════════════════════════════════════════════
 
-void Wolf::Update(float deltaTime, World* world) {
+void Wolf::Update(float dt, World* world) {
     if (!IsAlive()) return;
 
-    // ─── БЛОК ЗАЩИТЫ ОТ ЗАСТРЕВАНИЯ (ИСПРАВЛЕННЫЙ) ───
-    stuckCheckTimer += deltaTime;
-    if (stuckCheckTimer >= 1.0f) { 
+    // ── Защита от застревания ────────────────────────────────────────────────
+    stuckCheckTimer += dt;
+    if (stuckCheckTimer >= 1.0f) {
         stuckCheckTimer = 0.0f;
-        // У волка активное движение происходит в состояниях WANDERING и HUNGRY
-        if (state == AnimalState::WANDERING || state == AnimalState::HUNGRY) 
-        {
-            if (Vector3Distance(position, posAtLastCheck) < 0.3f) {
-                stuckCount++;
-            } else {
-                stuckCount = 0; 
-            }
+        if (state == AnimalState::WANDERING || state == AnimalState::HUNTING) {
+            if (Vector3Distance(position, posAtLastCheck) < 0.3f) stuckCount++;
+            else stuckCount = 0;
         }
         posAtLastCheck = position;
     }
-
     if (stuckCount >= 3) {
         stuckCount = 0;
-        const int halfMap = Config::World::MAP_SIZE / 2;
-        float rx = (float)GetRandomValue(-halfMap + 100, halfMap - 100);
-        float rz = (float)GetRandomValue(-halfMap + 100, halfMap - 100);
-        targetPosition = { rx, world->GetHeight(rx, rz), rz };
-        
-        targetPrey = nullptr; 
-        state = AnimalState::WANDERING; 
-        wanderTargetTimer = 10.0f;
+        targetPrey = nullptr;
+        if (state == AnimalState::HUNTING) PickMeadowHuntTarget(world);
+        else PickForestWanderTarget(world);
     }
 
-    // 1. Возраст
-    UpdateAge(deltaTime, world);
+    // ── Возраст ──────────────────────────────────────────────────────────────
+    UpdateAge(dt, world);
     if (!IsAlive()) return;
 
-    // 2. Таймеры
-    if (pounceCooldownTimer > 0.0f)  pounceCooldownTimer  -= deltaTime;
-    if (matingCooldownTimer > 0.0f)  matingCooldownTimer  -= deltaTime;
-    if (fightCooldownTimer  > 0.0f)  fightCooldownTimer   -= deltaTime;
+    // ── Таймеры ──────────────────────────────────────────────────────────────
+    if (pounceCooldownTimer > 0.0f) pounceCooldownTimer -= dt;
+    if (matingCooldownTimer > 0.0f) matingCooldownTimer -= dt;
+    if (fightCooldownTimer  > 0.0f) fightCooldownTimer  -= dt;
 
-    // 3. Голод. После еды травы decay умножается на GRASS_HUNGER_MULT
-    float decayRate = Config::Wolf::HUNGER_DECAY_RATE;
-    if (grassEffectTimer > 0.0f) {
-        grassEffectTimer -= deltaTime;
-        decayRate *= Config::Wolf::GRASS_HUNGER_MULT;
-    }
-    hunger -= decayRate * deltaTime;
+    // ── Голод ────────────────────────────────────────────────────────────────
+    hunger -= Config::Wolf::HUNGER_DECAY_RATE * dt;
     if (hunger < 0.0f) hunger = 0.0f;
 
-    // 4. Смерть от голода
+    // ── Смерть от голода ─────────────────────────────────────────────────────
     if (hunger <= 0.0f) {
-        starvationTimer += deltaTime;
+        starvationTimer += dt;
         if (starvationTimer >= Config::Wolf::STARVATION_LIMIT) {
-            world->SpawnParticles(position, (Color){90, 90, 90, 255}, 14, false);
-            world->SpawnParticles(position, (Color){60, 50, 40, 255}, 8,  false);
+            world->SpawnParticles(position, (Color){90,90,90,255}, 14, false);
+            world->SpawnParticles(position, (Color){60,50,40,255}, 8,  false);
             Die(DeathCause::STARVATION);
             return;
         }
@@ -687,203 +716,139 @@ void Wolf::Update(float deltaTime, World* world) {
         starvationTimer = 0.0f;
     }
 
-    // 5. Встряхивание блокирует всё
+    // ── Встряхивание блокирует всё ───────────────────────────────────────────
     if (shakeTimer > 0.0f) {
-        shakeTimer -= deltaTime;
-        swimSplashTimer -= deltaTime;
+        shakeTimer -= dt; swimSplashTimer -= dt;
         if (swimSplashTimer <= 0.0f) {
             swimSplashTimer = 0.15f;
-            Vector3 sp = { position.x, position.y + 0.6f, position.z };
-            world->SpawnParticles(sp, (Color){100, 160, 220, 255}, 5, false);
+            world->SpawnParticles(
+                {position.x, position.y + 0.6f, position.z},
+                (Color){100,160,220,255}, 5, false);
         }
         return;
     }
 
-    // 6. Скорость
+    // ── Скорость ─────────────────────────────────────────────────────────────
     float baseSpeed = Config::Wolf::SPEED_RUN * CurrentSpeedFactor();
-    if (pounceTimer > 0.0f) {
-        pounceTimer -= deltaTime;
-        speed = Config::Wolf::POUNCE_SPEED * CurrentSpeedFactor();
-    } else if (pounceCooldownTimer > 0.0f) {
-        speed = baseSpeed * Config::Wolf::REST_SPEED_FACTOR;
-    } else {
-        speed = baseSpeed;
+    if      (pounceTimer        > 0.0f) { pounceTimer -= dt; speed = Config::Wolf::POUNCE_SPEED * CurrentSpeedFactor(); }
+    else if (pounceCooldownTimer > 0.0f)  speed = baseSpeed * Config::Wolf::REST_SPEED_FACTOR;
+    else                                  speed = baseSpeed;
+
+    // ── Мёртвая жертва ───────────────────────────────────────────────────────
+    if (targetPrey && !targetPrey->IsAlive()) {
+        targetPrey = nullptr; hasPrevPreyPos = false;
     }
 
-    // 7. Мёртвая жертва — забываем
-    if (targetPrey != nullptr && !targetPrey->IsAlive()) {
-        targetPrey = nullptr;
-        hasPrevPreyPos = false;
-    }
-
-    // 8. Конфликт стай: проверяется ПЕРВЫМ для ADULT/MEDIUM,
-    // но не если уже охотимся или паримся
-    if (ageStage != Config::Wolf::AgeStage::BABY
-        && state != AnimalState::FIGHTING
-        && state != AnimalState::HUNGRY
-        && !isMating)
-    {
-        Wolf* enemy = FindEnemyWolfNearby(world);
-        if (enemy) {
-            state = AnimalState::FIGHTING;
-            fightTarget = enemy;
-            enemy->state = AnimalState::FIGHTING;
-            enemy->fightTarget = this;
+    // ── BABY не охотятся и не дерутся — только растут и иногда идут к воде ───
+    if (ageStage == Config::Wolf::AgeStage::BABY) {
+        // Ищем ближайшего взрослого из своей стаи — идём за ним
+        Wolf* packAdult = nullptr;
+        float bestD = 60.0f;
+        for (const auto& e : world->GetEntities()) {
+            if (!e->IsAlive()) continue;
+            Wolf* w = dynamic_cast<Wolf*>(e.get());
+            if (!w || w == this) continue;
+            if (w->packId != packId) continue;
+            if (w->ageStage == Config::Wolf::AgeStage::BABY) continue;
+            float d = Vector3Distance(position, w->GetPosition());
+            if (d < bestD) { bestD = d; packAdult = w; }
         }
-    }
 
-    // 9. Размножение — только если не в активных состояниях
-    if (state != AnimalState::HUNGRY && state != AnimalState::FIGHTING) {
-        TryAttemptMating(deltaTime, world);
-        if (mateTarget) {
-            // Снап к рельефу
-            float th = world->GetHeight(position.x, position.z);
-            if (th > world->GetCurrentWaterLevel()) position.y = th;
-            return;
-        }
-    }
-
-    // 10. Принудительный переход в охоту при сильном голоде (< 50 = 5/10),
-    // НО только если еда есть в радиусе. Иначе продолжаем патруль.
-    if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER
-        && state != AnimalState::HUNGRY
-        && state != AnimalState::FIGHTING
-        && !isMating)
-    {
-        if (FindNearestCarcassInRadius(world, CurrentHuntingRadius())
-            || FindNearestSheepInRadius(world, CurrentHuntingRadius()))
-        {
-            state = AnimalState::HUNGRY;
-        }
-    }
-
-    // 11. Пассивное обнаружение во время патруля:
-    // — На ТРУП реагируют всегда (легкая добыча)
-    // — На ОВЦУ только если голодны (< HUNGER_HUNT_TRIGGER)
-    if ((state == AnimalState::IDLE || state == AnimalState::WANDERING))
-    {
-        // Труп — всегда (даже сытый волк не упустит готовую еду)
-        if (FindNearestCarcassInRadius(world, CurrentHuntingRadius())) {
-            state = AnimalState::HUNGRY;
-        }
-        // Овцы — только если хочется есть
-        else if (hunger < Config::Wolf::HUNGER_HUNT_TRIGGER) {
-            Sheep* found = FindNearestSheepInRadius(world, CurrentHuntingRadius());
-            if (found) {
-                state = AnimalState::HUNGRY;
-                targetPrey = found;
+        if (packAdult) {
+            // Идём за взрослым — держимся в 3-8 единицах от него
+            float distToAdult = Vector3Distance(position, packAdult->GetPosition());
+            if (distToAdult > 8.0f) {
+                targetPosition = packAdult->GetPosition();
+            } else if (distToAdult < 3.0f) {
+                // Слишком близко — немного отходим в сторону
+                Vector3 away = Vector3Subtract(position, packAdult->GetPosition());
+                away.y = 0.0f;
+                if (Vector3Length(away) < 0.01f) away = { 1.0f, 0.0f, 0.0f };
+                away = Vector3Normalize(away);
+                targetPosition = {
+                    position.x + away.x * 4.0f,
+                    position.y,
+                    position.z + away.z * 4.0f
+                };
+            }
+            // Взрослый идёт к воде (вышел из леса) — детёнышу разрешаем следовать
+            // даже в воду: MoveSwimming сам обработает плавание
+        } else {
+            // Взрослых нет рядом — держимся у homePos
+            if (Vector3Distance(position, targetPosition) < 2.0f ||
+                Vector3Distance(position, homePos) > Config::Wolf::HOME_PATROL_RADIUS * 0.5f) {
+                PickForestWanderTarget(world);
             }
         }
+
+        MoveSwimming(dt, world);
+        // Снап к рельефу только если не в воде
+        float th = world->GetHeight(position.x, position.z);
+        if (th > world->GetCurrentWaterLevel()) position.y = th;
+        return;
     }
 
-    // 12. State machine
+    // ── Машина состояний ─────────────────────────────────────────────────────
     switch (state) {
-        case AnimalState::IDLE:     UpdateIdle(deltaTime, world);   break;
-        case AnimalState::WANDERING: {
-            wanderTargetTimer -= deltaTime;
-            
-            float distToTarget = Vector3Distance(position, targetPosition);
-            if (distToTarget < 2.0f || wanderTargetTimer <= 0.0f) {
-                const int halfMap = Config::World::MAP_SIZE / 2;
-                
-                // 70% шанс уйти в глубокий поиск по миру, 30% — покрутиться у дома
-                if (GetRandomValue(0, 100) < 70) {
-                    float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-                    float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-                    targetPosition = { rx, world->GetHeight(rx, rz), rz };
-                } else {
-                    float angle = (float)GetRandomValue(0, 360) * DEG2RAD;
-                    float radius = (float)GetRandomValue(20, 100); 
-                    float tx = homePos.x + cosf(angle) * radius;
-                    float tz = homePos.z + sinf(angle) * radius;
-                    tx = Clamp(tx, (float)-halfMap + 10, (float)halfMap - 10);
-                    tz = Clamp(tz, (float)-halfMap + 10, (float)halfMap - 10);
-                    targetPosition = { tx, world->GetHeight(tx, tz), tz };
-                }
-                
-                wanderTargetTimer = (float)GetRandomValue(8, 15);
-            }
-
-            MoveTowardsTarget(deltaTime, world);
-            // ────────────────────────────────────────────────────────
-            break;
-        }
-        case AnimalState::HUNGRY:   UpdateHunt(deltaTime, world);   break;
-        case AnimalState::FIGHTING: UpdateFight(deltaTime, world);  break;
+        case AnimalState::IDLE:     UpdateIdle     (dt, world); break;
+        case AnimalState::WANDERING: UpdateWandering(dt, world); break;
+        case AnimalState::HUNGRY:   // HUNGRY не используется, переадресуем
+        case AnimalState::HUNTING:  UpdateHunting  (dt, world); break;
+        case AnimalState::MATING:   UpdateMating   (dt, world); break;
+        case AnimalState::FIGHTING: UpdateFighting (dt, world); break;
         case AnimalState::FLEEING:  state = AnimalState::WANDERING; break;
     }
 
-    // 13. Снап к рельефу и удержание в границах карты
-    {
-        const int halfMap = Config::World::MAP_SIZE / 2;
-        const float minB = -(float)halfMap + 2.0f;
-        const float maxB =  (float)halfMap - 2.0f;
-        position.x = Clamp(position.x, minB, maxB);
-        position.z = Clamp(position.z, minB, maxB);
-    }
+    // ── Снап к рельефу ───────────────────────────────────────────────────────
+    const int halfMap = Config::World::MAP_SIZE / 2;
+    position.x = Clamp(position.x, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+    position.z = Clamp(position.z, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
     float th = world->GetHeight(position.x, position.z);
     if (th > world->GetCurrentWaterLevel()) position.y = th;
 }
 
-// =====================================================================
-//                              ОТРИСОВКА
-// =====================================================================
+// ═════════════════════════════════════════════════════════════════════════════
+//                          ОТРИСОВКА
+// ═════════════════════════════════════════════════════════════════════════════
 
 void Wolf::Draw() {
     Vector3 drawPos = position;
 
-    // Прыжок
     if (pounceTimer > 0.0f) {
         float t = 1.0f - (pounceTimer / Config::Wolf::POUNCE_DURATION);
         drawPos.y += sinf(t * PI) * 0.8f;
     }
-
-    // Тряска
     if (shakeTimer > 0.0f) {
         float t = shakeTimer / Config::Wolf::SHAKE_DURATION;
-        float amp = Config::Wolf::SHAKE_AMPLITUDE;
-        drawPos.x += sinf(t * 60.0f) * amp;
-        drawPos.z += cosf(t * 55.0f) * amp * 0.8f;
-        drawPos.y += fabsf(sinf(t * 30.0f)) * amp * 0.6f;
+        drawPos.x += sinf(t * 60.0f) * Config::Wolf::SHAKE_AMPLITUDE;
+        drawPos.z += cosf(t * 55.0f) * Config::Wolf::SHAKE_AMPLITUDE * 0.8f;
+        drawPos.y += fabsf(sinf(t * 30.0f)) * Config::Wolf::SHAKE_AMPLITUDE * 0.6f;
     }
-
-    // Бой: лёгкое трясение от ударов
-    if (state == AnimalState::FIGHTING) {
+    if (state == AnimalState::FIGHTING)
         drawPos.x += sinf(GetTime() * 25.0f) * 0.08f;
-    }
 
-    // ── Обновляем угол поворота по фактическому движению ──
-    Vector3 movedDelta = {
-        position.x - lastDrawPos.x, 0.0f,
-        position.z - lastDrawPos.z
-    };
-    float movedDist = Vector3Length(movedDelta);
-    if (movedDist > 0.02f) {
-        facingAngle = atan2f(movedDelta.x, movedDelta.z) * RAD2DEG;
-    }
+    Vector3 delta = { position.x - lastDrawPos.x, 0.0f, position.z - lastDrawPos.z };
+    if (Vector3Length(delta) > 0.02f)
+        facingAngle = atan2f(delta.x, delta.z) * RAD2DEG;
     lastDrawPos = position;
 
     float size = 1.4f * CurrentSizeFactor();
 
     Color body = DARKGRAY;
     if (ageStage == Config::Wolf::AgeStage::ADULT && isLeader)
-        body = (Color){55, 50, 55, 255};
+        body = (Color){55,50,55,255};
     else if (ageStage == Config::Wolf::AgeStage::BABY)
-        body = (Color){120, 110, 110, 255};
+        body = (Color){120,110,110,255};
 
     float eyeSize = 0.2f * CurrentSizeFactor();
     if (ageStage == Config::Wolf::AgeStage::ADULT && isLeader) eyeSize *= 1.3f;
 
-    // Отрисовка с поворотом — модель смотрит в направление движения
     rlPushMatrix();
     rlTranslatef(drawPos.x, drawPos.y, drawPos.z);
     rlRotatef(facingAngle, 0.0f, 1.0f, 0.0f);
-
-    DrawCube({0.0f, 0.0f, 0.0f}, size, size, size, body);
-    // Глаза теперь на «морде» — по локальной +Z (вперёд)
+    DrawCube({0,0,0}, size, size, size, body);
     float eyeOff = 0.3f * CurrentSizeFactor();
-    DrawCube({-eyeOff, eyeOff, size * 0.5f}, eyeSize, eyeSize, eyeSize, RED);
-    DrawCube({ eyeOff, eyeOff, size * 0.5f}, eyeSize, eyeSize, eyeSize, RED);
-
+    DrawCube({-eyeOff, eyeOff, size*0.5f}, eyeSize, eyeSize, eyeSize, RED);
+    DrawCube({ eyeOff, eyeOff, size*0.5f}, eyeSize, eyeSize, eyeSize, RED);
     rlPopMatrix();
 }

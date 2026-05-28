@@ -9,7 +9,9 @@ enum class AnimalState {
     WANDERING,
     HUNGRY,
     FLEEING,
-    FIGHTING  // волки: конфликт стай
+    FIGHTING,   // волки: конфликт стай
+    HUNTING,    // волки: активная охота на лугах
+    MATING      // волки: поиск/процесс спаривания
 };
 
 class Animal : public Entity {

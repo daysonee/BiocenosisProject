@@ -249,7 +249,9 @@ void Sheep::Update(float deltaTime, World* world) {
 
     bool wolfNearby = false;
     Wolf* closestWolf = nullptr;
-    float closestWolfDist = myVisionRadius;
+    // Увеличенный радиус обнаружения — овца замечает волка раньше
+    float wolfDetectRadius = myVisionRadius * 1.8f;
+    float closestWolfDist = wolfDetectRadius;
     for (const auto& entity : world->GetEntities()) {
         if (!entity->IsAlive()) continue;
         Wolf* wolf = dynamic_cast<Wolf*>(entity.get());
@@ -517,12 +519,22 @@ void Sheep::Update(float deltaTime, World* world) {
                 }
 
                 // ── 4. ЦЕЛЕВАЯ ТОЧКА И ДВИЖЕНИЕ ─────────────────────
+                // Чем ближе волк — тем дальше целевая точка убегания
+                float fleeProjection = (distToWolf < Config::Sheep::DODGE_RANGE)
+                    ? 30.0f   // волк совсем рядом — проецируем далеко
+                    : 18.0f;  // обычное расстояние
+
                 int halfMap = Config::World::MAP_SIZE / 2;
-                float tx = Clamp(position.x + fromWolf.x * 15.0f,
+                float tx = Clamp(position.x + fromWolf.x * fleeProjection,
                                  -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
-                float tz = Clamp(position.z + fromWolf.z * 15.0f,
+                float tz = Clamp(position.z + fromWolf.z * fleeProjection,
                                  -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
                 targetPosition = { tx, world->GetHeight(tx, tz), tz };
+
+                // Скоростной буст при очень близком волке (паника)
+                if (distToWolf < 4.0f) {
+                    speed = myRunSpeed * 1.15f;
+                }
 
                 MoveTowardsTarget(deltaTime, world);
                 break;
