@@ -4,10 +4,13 @@
 
 class World;
 
+enum class DeathCause { NONE, EATEN_BY_WOLF, STARVATION, OLD_AGE, FIGHT, DROWNING, OTHER };
+
 class Entity {
-    protected: 
+    protected:
         Vector3 position;
         bool isAlive;
+        DeathCause deathCause = DeathCause::NONE;
     public:
         Entity(Vector3 startPosition);
 
@@ -17,8 +20,13 @@ class Entity {
 
         Vector3 GetPosition();
 
-        bool IsAlive() const {return isAlive; }
-        void Die() { isAlive = false; }
+        bool IsAlive() const { return isAlive; }
+        void Die(DeathCause cause = DeathCause::OTHER) {
+            isAlive = false;
+            deathCause = cause;
+        }
+
+        DeathCause GetDeathCause() const { return deathCause; }
 
         virtual Color GetDeathColor() const { return GRAY; }
 

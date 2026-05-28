@@ -70,7 +70,7 @@ void SpawnWolfPacksInForest(World& world, const MenuSettings& settings) {
                     wolf->PromoteToLeader();
                 }
 
-                world.QueueEntity(std::move(wolf));
+                world.AddEntity(std::move(wolf));
                 wolvesSpawned++;
             }
             
@@ -170,33 +170,6 @@ void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
         if (ry >= Config::World::WATER_LEVEL && ry <= Config::World::SAND_LEVEL) {
             world.AddEntity(std::make_unique<Crab>((Vector3) { rx, ry, rz }));
             spawned++;
-        }
-    }
-}
-
-// СПАВН ОХОТНИКА (1 шт) на холме в лесной зоне
-void SpawnHunter(World& world) {
-    const int halfMap = Config::World::MAP_SIZE / 2;
-    // Ищем точку: лес (между SAND и BIOME), не очень близко к центру
-    for (int i = 0; i < 2000; ++i) {
-        float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-        float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-        float ry = world.GetHeight(rx, rz);
-        if (ry > Config::World::SAND_LEVEL + 2.0f
-            && ry < Config::World::BIOME_THRESHOLD)
-        {
-            world.AddEntity(std::make_unique<Hunter>((Vector3){ rx, ry, rz }));
-            return;
-        }
-    }
-    // Fallback: где попало на суше
-    for (int i = 0; i < 1000; ++i) {
-        float rx = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-        float rz = (float)GetRandomValue(-halfMap + 50, halfMap - 50);
-        float ry = world.GetHeight(rx, rz);
-        if (ry > Config::World::WATER_LEVEL + 2.0f) {
-            world.AddEntity(std::make_unique<Hunter>((Vector3){ rx, ry, rz }));
-            return;
         }
     }
 }
@@ -310,16 +283,20 @@ int main() {
 
     // ========== МУЗЫКА ==========
     InitAudioDevice();
-    Music backgroundMusic;
+    Music backgroundMusic = { 0 };
     backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.mp3");
     if (backgroundMusic.stream.buffer == nullptr) {
+        UnloadMusicStream(backgroundMusic);
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.ogg");
     }
     if (backgroundMusic.stream.buffer == nullptr) {
+        UnloadMusicStream(backgroundMusic);
         backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.wav");
     }
-    backgroundMusic.looping = true;
-    PlayMusicStream(backgroundMusic);
+    if (backgroundMusic.stream.buffer != nullptr) {
+        backgroundMusic.looping = true;
+        PlayMusicStream(backgroundMusic);
+    }
 
     World* myWorld = new World();
 
@@ -593,7 +570,6 @@ int main() {
         }
         lastSheepCount = aliveSheep;
 
-        static int lastWolfCount = 0;
         int wolfDelta = aliveWolves - lastWolfCount;
         if (wolfDelta < 0) {
             totalWolvesStarved += (-wolfDelta);
@@ -639,7 +615,7 @@ int main() {
         if (isRegenerating) {
             DrawRectangle(0, 0, screenWidth, screenHeight, (Color) { 0, 0, 0, 180 });
 
-            Rectangle dialogBox = { screenWidth / 2.0 - 200.0, screenHeight / 2 - 75, 400, 150 };
+            Rectangle dialogBox = { screenWidth / 2.0f - 200.0f, screenHeight / 2.0f - 75.0f, 400, 150 };
             DrawRectangleRec(dialogBox, (Color) { 50, 50, 70, 255 });
             DrawRectangleLinesEx(dialogBox, 3, YELLOW);
 

@@ -213,7 +213,7 @@ void Sheep::Update(float deltaTime, World* world) {
         if (position.y <= world->GetCurrentWaterLevel()) {
             health -= 25.0f * deltaTime;
             if (health <= 0.0f) {
-                Die();
+                Die(DeathCause::DROWNING);
                 return;
             }
         }
@@ -237,7 +237,7 @@ void Sheep::Update(float deltaTime, World* world) {
         } else {
             // ADULT — смерть от старости
             world->SpawnParticles(position, (Color){180, 180, 180, 255}, 12, false);
-            Die();
+            Die(DeathCause::OLD_AGE);
             return;
         }
     }
@@ -678,7 +678,7 @@ void Sheep::Update(float deltaTime, World* world) {
     float waterLvl = world->GetCurrentWaterLevel();
     if (position.y <= waterLvl) {
         health -= 20.0f * deltaTime;
-        if (health <= 0.0f) Die();
+        if (health <= 0.0f) Die(DeathCause::DROWNING);
     } else {
         if (health < 100.0f) health = fminf(health + 5.0f * deltaTime, 100.0f);
     }

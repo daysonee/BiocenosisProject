@@ -224,7 +224,7 @@ void Wolf::UpdateAge(float deltaTime, World* world) {
         // ADULT — смерть от старости. Серые партиклы (как у овец).
         diedOfOldAge = true;
         world->SpawnParticles(position, (Color){180, 180, 180, 255}, 14, false);
-        Die();
+        Die(DeathCause::OLD_AGE);
     }
 }
 
@@ -439,7 +439,7 @@ void Wolf::UpdateHunt(float dt, World* world) {
                 // Зелёные «гнилостные» партиклы + смерть
                 world->SpawnParticles(position, (Color){80, 130, 60, 255}, 18, false);
                 world->SpawnParticles(position, (Color){60, 90, 40, 255}, 10, false);
-                Die();
+                Die(DeathCause::OTHER);
                 return;
             }
 
@@ -502,7 +502,7 @@ void Wolf::UpdateHunt(float dt, World* world) {
             killPos.y += 0.5f;
             world->SpawnParticles(killPos, (Color){200, 30, 30, 255}, 20, false);
             world->SpawnParticles(killPos, (Color){120, 10, 10, 255}, 10, false);
-            targetPrey->Die();
+            targetPrey->Die(DeathCause::EATEN_BY_WOLF);
 
             if (ageStage == Config::Wolf::AgeStage::BABY) {
                 babyKillCount++;
@@ -616,7 +616,7 @@ void Wolf::UpdateFight(float dt, World* world) {
             // в своём UpdateFight на следующем тике.
             world->SpawnParticles(position, (Color){150, 60, 60, 255}, 12, false);
             diedInFight = true;
-            Die();
+            Die(DeathCause::FIGHT);
         }
     }
 }
@@ -680,7 +680,7 @@ void Wolf::Update(float deltaTime, World* world) {
         if (starvationTimer >= Config::Wolf::STARVATION_LIMIT) {
             world->SpawnParticles(position, (Color){90, 90, 90, 255}, 14, false);
             world->SpawnParticles(position, (Color){60, 50, 40, 255}, 8,  false);
-            Die();
+            Die(DeathCause::STARVATION);
             return;
         }
     } else {
