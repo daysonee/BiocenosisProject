@@ -28,7 +28,7 @@ static bool CrabMove(Vector3& position, Vector3 target, float speed,
     // Крабам разрешён мелководный пляж: блокируем только глубокую воду
     float h = world->GetHeight(nx, nz);
     float waterLvl = world->GetCurrentWaterLevel();
-    if (h > waterLvl - 1.5f) {
+    if (h > waterLvl - Config::Crab::WATER_TOLERANCE) {
         position.x = nx;
         position.z = nz;
         return true;
@@ -59,41 +59,45 @@ Crab::Crab(Vector3 startPosition) : Animal(startPosition) {
  
 // ─── Вспомогательные ─────────────────────────────────────────────────────────
  
-bool Crab::IsOnBeach(float height) const {
-    // Полоса пляжа сдвигается вместе с уровнем воды (приливы)
-    // Используем статический ориентир — пляж это полоса 2 блока от берега
-    // ВВЕРХ от уровня воды. При приливе пляж "сдвигается" наверх.
-    // height — точка которую проверяем
-    // Граница: между (waterLvl-0.3) и (waterLvl+3.5)
-    // Но т.к. IsOnBeach не имеет world, используем верхнюю границу песка широко
-    return (height >= Config::World::WATER_LEVEL - 0.5f &&
-            height <= Config::World::SAND_LEVEL  + 2.0f);
+bool Crab::IsOnBeach(float height, World* world) const {
+    // Полоса пляжа: от чуть ниже текущего уровня воды до 3.5 блока выше.
+    // Двигается вместе с приливом — при подъёме воды "пляж" сдвигается выше.
+    float waterLvl = world->GetCurrentWaterLevel();
+    return (height >= waterLvl - 0.3f && height <= waterLvl + 3.5f);
 }
  
 void Crab::PickNewBeachTarget(World* world) {
     const int halfMap = Config::World::MAP_SIZE / 2;
-    const float wanderRadius = Config::Crab::WANDER_RADIUS;
- 
-    for (int attempt = 0; attempt < 20; ++attempt) {
+
+    // С шансом MIGRATION_CHANCE краб отправляется в дальнее путешествие
+    // по пляжу — это позволяет крабам ходить по ВСЕМУ побережью карты,
+    // а не топтаться в одном месте.
+    bool migrate = ((float)GetRandomValue(0, 9999) / 10000.0f)
+                   < Config::Crab::MIGRATION_CHANCE;
+    float maxRadius = migrate ? Config::Crab::MIGRATION_RADIUS
+                              : Config::Crab::WANDER_RADIUS;
+
+    // Больше попыток (50) — выше шанс найти валидную пляжную точку
+    for (int attempt = 0; attempt < 50; ++attempt) {
         float angle  = (float)GetRandomValue(0, 360) * DEG2RAD;
-        float radius = (float)GetRandomValue(50, (int)(wanderRadius * 10)) / 10.0f;
- 
+        float radius = (float)GetRandomValue(50, (int)(maxRadius * 10)) / 10.0f;
+
         float tx = position.x + cosf(angle) * radius;
         float tz = position.z + sinf(angle) * radius;
         tx = Clamp(tx, -(float)halfMap + 5.0f, (float)halfMap - 5.0f);
         tz = Clamp(tz, -(float)halfMap + 5.0f, (float)halfMap - 5.0f);
- 
+
         float ty = world->GetHeight(tx, tz);
-        if (IsOnBeach(ty)) {
+        if (IsOnBeach(ty, world)) {
             targetPosition = { tx, ty, tz };
             return;
         }
     }
- 
-    // Фолбэк: остаться на месте
+
+    // Фолбэк: остаться на месте ненадолго
     targetPosition = position;
     state = AnimalState::IDLE;
-    stateTimer = (float)GetRandomValue(10, 20) / 10.0f;
+    stateTimer = (float)GetRandomValue(5, 12) / 10.0f;
 }
  
 // Ищет ближайший живой труп с едой в пределах всей карты.
@@ -124,14 +128,72 @@ void Crab::Update(float deltaTime, World* world) {
     // ── 1. ГОЛОД ─────────────────────────────────────────────────────────────
     hunger -= Config::Crab::HUNGER_DECAY * deltaTime;
     if (hunger < 0.0f) hunger = 0.0f;
- 
+
+    // ── 1a. ГОЛОДНАЯ СМЕРТЬ ──────────────────────────────────────────────────
+    // Если hunger=0 дольше 20 сек, краб умирает (тёмно-оранжевые частицы).
+    if (hunger <= 0.0f) {
+        starvationTimer += deltaTime;
+        if (starvationTimer >= Config::Crab::STARVATION_LIMIT) {
+            world->SpawnParticles(position, (Color){160, 80, 30, 255}, 6, false);
+            Die();
+            return;
+        }
+    } else {
+        starvationTimer = 0.0f;
+    }
+
     // ── 2. ВОЗРАСТ ───────────────────────────────────────────────────────────
     ageTimer += deltaTime;
     if (ageTimer >= lifespan) {
-        // Смерть от старости: оранжевые частицы
         world->SpawnParticles(position, (Color){200, 100, 50, 255}, 8, false);
         Die();
         return;
+    }
+
+    // ── 2a. ПЕРЕНАСЕЛЕНИЕ → БОЛЕЗНЬ ──────────────────────────────────────────
+    // Раз в 5 сек считаем соседей в радиусе 15. Если > 6 → шанс 15% умереть.
+    // Чем плотнее — тем выше шанс (линейный рост).
+    crowdCheckTimer -= deltaTime;
+    if (crowdCheckTimer <= 0.0f) {
+        crowdCheckTimer = Config::Crab::CROWD_CHECK_INTERVAL;
+        int neighbors = 0;
+        for (const auto& entity : world->GetEntities()) {
+            if (!entity->IsAlive() || entity.get() == this) continue;
+            Crab* other = dynamic_cast<Crab*>(entity.get());
+            if (!other) continue;
+            if (Vector3Distance(position, other->GetPosition()) < Config::Crab::CROWD_RADIUS) {
+                ++neighbors;
+            }
+        }
+        if (neighbors > Config::Crab::CROWD_THRESHOLD) {
+            // Шанс растёт с числом соседей: base * (neighbors / threshold)
+            float chance = Config::Crab::CROWD_DEATH_CHANCE
+                         * ((float)neighbors / Config::Crab::CROWD_THRESHOLD);
+            float roll = (float)GetRandomValue(0, 9999) / 10000.0f;
+            if (roll < chance) {
+                // "Болезнь" — зелёные частицы
+                world->SpawnParticles(position, (Color){80, 140, 60, 255}, 10, false);
+                Die();
+                return;
+            }
+        }
+    }
+
+    // ── 2b. УТОПЛЕНИЕ ────────────────────────────────────────────────────────
+    // Краб, оказавшийся ниже уровня воды, быстро тонет.
+    {
+        float waterLvl = world->GetCurrentWaterLevel();
+        if (position.y < waterLvl - 0.3f) {
+            health -= Config::Crab::DROWN_DAMAGE * deltaTime;
+            if (health <= 0.0f) {
+                world->SpawnParticles(position, (Color){60, 120, 200, 255}, 8, false);
+                Die();
+                return;
+            }
+        } else {
+            // Восстановление HP на суше
+            if (health < 100.0f) health = fminf(health + 10.0f * deltaTime, 100.0f);
+        }
     }
  
     // ── 3. ТАЙМЕРЫ ───────────────────────────────────────────────────────────
@@ -169,13 +231,12 @@ void Crab::Update(float deltaTime, World* world) {
         }
     }
  
-    // ── 5. СТРАХОВКА ПЛЯЖА (раз в 3 секунды, не каждый тик) ──────────────────
-    static thread_local float beachCheckTimer = 0.0f;
+    // ── 5. СТРАХОВКА ПЛЯЖА (раз в 3 секунды, индивидуальный таймер) ─────────
     beachCheckTimer -= deltaTime;
     if (beachCheckTimer <= 0.0f) {
         beachCheckTimer = 3.0f;
         float currentHeight = world->GetHeight(position.x, position.z);
-        if (!IsOnBeach(currentHeight) && state != AnimalState::IDLE && !isMating
+        if (!IsOnBeach(currentHeight, world) && state != AnimalState::IDLE && !isMating
             && state != AnimalState::HUNGRY) {
             PickNewBeachTarget(world);
         }

@@ -5,7 +5,7 @@
 
 struct MenuSettings {
     int sheepCount = 200;
-    int wolfCount = 1;
+    int wolfCount = 50;
     int grassCount = 1200;
     bool readyToStart = false;
 };

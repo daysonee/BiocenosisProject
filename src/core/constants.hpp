@@ -215,7 +215,7 @@ namespace Config {
         constexpr float GRASS_HUNGER_MULT     = 2.5f;   // умножение decay
         // Когда волк очень голоден — расширяем радиус поиска травы
         constexpr float DESPERATE_HUNGER      = 30.0f;  // 3/10
-        constexpr float GRASS_DESPERATE_RADIUS = 60.0f;
+        constexpr float GRASS_DESPERATE_RADIUS = 100.0f;
 
         // ── ДОМ СТАИ (патрулирование своей зоны) ─────────────────
         constexpr float HOME_PATROL_RADIUS = 70.0f;
@@ -254,11 +254,15 @@ namespace Config {
         constexpr float HUNT_TIMEOUT   = 40.0f; 
     }
 
-        namespace Crab {
-        constexpr int   INITIAL_COUNT       = 50;   // больше на старте
+    namespace Crab {
+        constexpr int   INITIAL_COUNT       = 25;   // больше на старте
  
-        constexpr float SPEED_WALK          = 1.8f; // чуть бодрее
-        constexpr float WANDER_RADIUS       = 35.0f; // шире зона прогулки
+        constexpr float SPEED_WALK          = 2.6f; // заметно бодрее
+        constexpr float WANDER_RADIUS       = 50.0f; // шире зона прогулки
+        constexpr float MIGRATION_CHANCE    = 0.15f;  // 15% — выбрать дальнюю цель
+        constexpr float MIGRATION_RADIUS    = 150.0f; // дальняя миграция по пляжу
+        // Как глубоко краб может зайти в воду (waterLvl - WATER_TOLERANCE)
+        constexpr float WATER_TOLERANCE     = 2.5f;
  
         // Поедание трупа
         constexpr float EAT_RADIUS          = 2.0f;
@@ -268,8 +272,8 @@ namespace Config {
         constexpr float HUNGER_EAT_TRIGGER  = 60.0f;
  
         // Возраст — крабы живут гораздо дольше
-        constexpr float LIFESPAN_MIN        = 50.0f; 
-        constexpr float LIFESPAN_MAX        = 80.0f; 
+        constexpr float LIFESPAN_MIN        = 180.0f; // 3 минуты
+        constexpr float LIFESPAN_MAX        = 300.0f; // 5 минут
  
         // Размножение — за раз сразу несколько детей (как у настоящих крабов)
         constexpr float MATING_HUNGER_THRESHOLD = 70.0f;
@@ -279,5 +283,17 @@ namespace Config {
         constexpr float SPAWN_OFFSET_RADIUS     = 2.0f;
         constexpr int   BABIES_MIN              = 2;  // минимум 2 детёныша
         constexpr int   BABIES_MAX              = 4;  // максимум 4
+
+        // ── КОНТРОЛЬ ПОПУЛЯЦИИ ───────────────────────────────────
+        // 1) Голодная смерть: если hunger=0 дольше STARVATION_LIMIT → Die()
+        constexpr float STARVATION_LIMIT     = 20.0f;
+        // 2) Перенаселение: в радиусе CROWD_RADIUS > CROWD_THRESHOLD соседей
+        //    → каждые CROWD_CHECK_INTERVAL сек шанс CROWD_DEATH_CHANCE умереть
+        constexpr float CROWD_CHECK_INTERVAL = 5.0f;
+        constexpr float CROWD_RADIUS         = 15.0f;
+        constexpr int   CROWD_THRESHOLD      = 6;
+        constexpr float CROWD_DEATH_CHANCE   = 0.15f; // 15% за проверку
+        // 3) Утопление: урон/сек если под водой
+        constexpr float DROWN_DAMAGE         = 40.0f;
     }
 }

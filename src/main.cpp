@@ -371,6 +371,7 @@ int main() {
     totalWolvesBorn = 0;
 
     int lastSheepCount = initialSheep;
+    int lastWolfCount = initialWolves;
 
     stats.setSheepCount(initialSheep, totalSheepBorn);
     stats.setWolfCount(initialWolves, totalWolvesBorn);
@@ -466,6 +467,7 @@ int main() {
                 }
 
                 lastSheepCount = newInitialSheep;
+                lastWolfCount = newInitialWolves;
                 int newInitialGrass = myWorld->GetGrassCount();
 
                 stats.setSheepCount(newInitialSheep, totalSheepBorn);

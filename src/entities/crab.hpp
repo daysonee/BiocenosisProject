@@ -26,9 +26,16 @@ private:
 
     // ── Поворот в направлении движения ──────────────────────────────
     float facingAngle = 0.0f;
+
+    // Индивидуальный таймер страховки пляжа
+    float beachCheckTimer = 0.0f;
+
+    // Контроль популяции
+    float starvationTimer  = 0.0f;  // сколько секунд на нуле hunger
+    float crowdCheckTimer  = 0.0f;  // таймер проверки перенаселения
  
     // ── Вспомогательные ─────────────────────────────────────────────
-    bool IsOnBeach(float height) const;
+    bool IsOnBeach(float height, World* world) const;
     void PickNewBeachTarget(World* world);
     Carcass* FindNearestCarcass(World* world) const;
  
