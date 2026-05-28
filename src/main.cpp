@@ -283,20 +283,6 @@ int main() {
 
     // ========== МУЗЫКА ==========
     InitAudioDevice();
-    Music backgroundMusic = { 0 };
-    backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.mp3");
-    if (backgroundMusic.stream.buffer == nullptr) {
-        UnloadMusicStream(backgroundMusic);
-        backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.ogg");
-    }
-    if (backgroundMusic.stream.buffer == nullptr) {
-        UnloadMusicStream(backgroundMusic);
-        backgroundMusic = LoadMusicStream("ZXKAI_-_NO_BATIDAO_80337833.wav");
-    }
-    if (backgroundMusic.stream.buffer != nullptr) {
-        backgroundMusic.looping = true;
-        PlayMusicStream(backgroundMusic);
-    }
 
     World* myWorld = new World();
 
@@ -373,7 +359,6 @@ int main() {
         screenHeight = GetScreenHeight();
         if (dt > 0.033f) dt = 0.033f;
 
-        UpdateMusicStream(backgroundMusic);
 
         if (IsKeyPressed(KEY_P)) {
             isPaused = !isPaused;
@@ -660,7 +645,6 @@ int main() {
     }
 
     delete myWorld;
-    UnloadMusicStream(backgroundMusic);
     CloseAudioDevice();
 
     EnableCursor();

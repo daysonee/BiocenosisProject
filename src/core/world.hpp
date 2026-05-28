@@ -4,6 +4,7 @@
 #include <memory>
 #include "entity.hpp"
 #include "constants.hpp"
+#include "raylib.h"
 
 enum class WeatherState {
     SUNNY,
@@ -21,6 +22,20 @@ struct Particle {
 
 class World {
 private:
+    Sound zhelezinHalyava;
+    Sound zhelezinLaviKontest;
+    Sound zhelezinNePonayal;
+    Sound zhelezinOnulenie;
+    Sound zhelezinTiOpozdal;
+    Sound zhelezinTiUmer;
+
+    Sound sheep1;
+    Sound sheep2;
+    Sound sheep3;
+
+    Sound sunny;
+    Sound rainning;
+
     std::vector<Particle>               particles;
     std::vector<std::unique_ptr<Entity>> entities;
     std::vector<std::unique_ptr<Entity>> pendingEntities;
@@ -76,6 +91,20 @@ private:
 
     Vector3 hunterHutPosition;
 public:
+
+    void PlayZhelezinHalyava() const;
+    void PlayZhelezinLaviKontest() const;
+    void PlayZhelezinNePonayal() const;
+    void PlayZhelezinOnulenie() const;
+    void PlayZhelezinTiOpozdal() const;
+    void PlayZhelezinTiUmer() const;
+
+    void PlaySheep1() const;
+    void PlaySheep2() const;
+    void PlaySheep3() const;
+
+    void PlaySunny() const;
+    void PlayRainning() const;
 
     Vector3 GetHunterHutPosition() const { return hunterHutPosition; }
     

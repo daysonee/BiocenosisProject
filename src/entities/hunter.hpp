@@ -29,16 +29,18 @@ private:
     float facingAngle; // Запоминает угол поворота, чтобы не сбрасываться на 0
     float smokeTimer;  // Таймер для дыма из трубы
 
+    Texture2D faceTexture;
+
     void MoveTowards(Vector3 target, float speed, float deltaTime, World* world);
     Wolf* FindNearestWolf(World* world);
 
 public:
     Hunter(Vector3 startPosition);
-    ~Hunter() override = default;
+    ~Hunter() override;
 
     void Update(float deltaTime, World* world) override;
     void Draw() override;
-    
+    void PlayShoot(World* world);
     void Draw2D(Camera camera);
     
     Color GetDeathColor() const override { return MAROON; }

@@ -9,6 +9,8 @@
 #include <cmath>
 #include <vector>
 #include <algorithm>
+#include <cstdlib> 
+#include <ctime> 
 
 // Радиус блуждания вокруг центра стада.
 // 80 единиц — разумный масштаб для MAP_SIZE=1000.
@@ -347,8 +349,9 @@ void Sheep::Update(float deltaTime, World* world) {
                     // Только ОДИН из пары рожает (тот, чей указатель больше)
                     if (matingProgressTimer >= Config::Sheep::MATING_PROCESS_TIME
                         && this > mateTarget)
-                    {
-                        // ♥ Рождение ягнёнка
+                    {   
+                        //PlayBlee(world);
+                        // Рождение ягнёнка
                         Vector3 babyPos = {
                             (position.x + mateTarget->GetPosition().x) * 0.5f,
                             position.y,
@@ -569,6 +572,7 @@ void Sheep::Update(float deltaTime, World* world) {
                     float dist2d = Vector2Distance(fp, fg);
                     if (dist2d < Config::Sheep::EAT_RADUIS) {
                         float nutrition = world->EatGrass(grassIdx);
+                        //PlayBlee(world);
                         hunger = fminf(hunger + nutrition, myMaxHunger);
                         state      = AnimalState::IDLE;
                         stateTimer = Config::Sheep::IDLE_TIME;
@@ -744,4 +748,12 @@ void Sheep::Draw() {
              0.4f * scale, 0.4f * scale, 0.4f * scale, BLACK);
 
     rlPopMatrix();
+}
+
+void Sheep::PlayBlee(World* world){
+    srand(static_cast<unsigned int>(time(0)));
+    int num = rand() % 3;
+    if (num == 0) world->PlaySheep1();
+    if (num == 1) world->PlaySheep2();
+    if (num == 2) world->PlaySheep3();
 }
