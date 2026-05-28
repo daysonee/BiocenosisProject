@@ -21,7 +21,7 @@ private:
     float    pounceCooldownTimer = 0.0f;
     Vector3  prevPreyPos       = {};
     bool     hasPrevPreyPos    = false;
-
+    int      targetGrassIndex  = -1;
     // ── Возраст ──────────────────────────────────────────────────────────────
     Config::Wolf::AgeStage ageStage;
     float maxAgeInCurrentStage = 0.0f;
@@ -69,6 +69,9 @@ private:
     void UpdateAge(float dt, World* world);
     void MoveSwimming(float dt, World* world);
     void TryStartPounce(float distToPrey, World* world);
+
+    int  grassEatenCount = 0;   // Счётчик съеденной травы
+    bool isSheepFrenzy   = false; // Флаг «режима уничтожения овец»
 
     // Поиск
     Sheep*   FindNearestSheepInRadius(World* world, float radius) const;
@@ -119,7 +122,8 @@ public:
     void PromoteToLeader();
 
     bool CanMate() const {
-        return (ageStage == Config::Wolf::AgeStage::ADULT ||
+        return !isSheepFrenzy // Во время френзи спаривание заблокировано
+            && (ageStage == Config::Wolf::AgeStage::ADULT ||
                 ageStage == Config::Wolf::AgeStage::MEDIUM)
             && hunger              >= Config::Wolf::MATING_HUNGER_THRESHOLD
             && matingCooldownTimer <= 0.0f

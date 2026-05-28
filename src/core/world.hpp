@@ -46,7 +46,8 @@ private:
         Vector3            position;
         Config::Grass::Type type;
         bool               alive;
-        float              regrowTimer = 0.0f;  // секунд до возрождения после поедания
+        float              regrowTimer = 0.0f; 
+        bool               reserved = false; // секунд до возрождения после поедания
     };
     std::vector<GrassPatch> grassPatches;
 
@@ -87,6 +88,8 @@ public:
     int  FindNearestGrass(Vector3 from, float maxRadius,
                           Vector3& outPos, Config::Grass::Type& outType) const;
     float EatGrass(int index);
+
+    void SetGrassReserved(int index, bool reserved);
 
     float GetHeight(float x, float z) const;
     Color GetBiomeColor(float height) const;

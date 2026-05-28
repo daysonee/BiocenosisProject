@@ -22,6 +22,9 @@ private:
     float shootCooldown;
     float recoilTimer;
     
+    float abilityTimer = 0.0f;     // Сколько секунд еще действует ускорение
+    float abilityCooldown = 0.0f;  // Сколько секунд осталось до новой активации
+    
     // Новые переменные для визуала
     float facingAngle; // Запоминает угол поворота, чтобы не сбрасываться на 0
     float smokeTimer;  // Таймер для дыма из трубы

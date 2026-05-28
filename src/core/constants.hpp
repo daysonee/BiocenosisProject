@@ -174,17 +174,17 @@ namespace Config {
 
         // ── РАДИУС ОХОТЫ (на жертву) ─────────────────────────────
         // Взрослый волк — опытный охотник, видит дальше всех.
-        constexpr float HUNTING_RADIUS_BABY   = 20.0f;  // 30 → 20: детёныш неопытен
-        constexpr float HUNTING_RADIUS_MEDIUM = 25.0f;
-        constexpr float HUNTING_RADIUS_ADULT  = 35.0f;  // 15 → 35: взрослый видит далеко
+        constexpr float HUNTING_RADIUS_BABY   = 30.0f;  // 30 → 20: детёныш неопытен
+        constexpr float HUNTING_RADIUS_MEDIUM = 40.0f;
+        constexpr float HUNTING_RADIUS_ADULT  = 50.0f;  // 15 → 35: взрослый видит далеко
 
         // ── ВОЗРАСТНЫЕ СТАДИИ ─────────────────────────────────────
         enum class AgeStage { BABY, MEDIUM, ADULT };
 
-        constexpr float TIME_TO_GROW_BABY_MIN   = 90.0f;   // 180 → 90:  ~1.5 мин
-        constexpr float TIME_TO_GROW_BABY_MAX   = 120.0f;  // 240 → 120: ~2 мин
-        constexpr float TIME_TO_GROW_MEDIUM_MIN = 180.0f;  // 360 → 180: ~3 мин
-        constexpr float TIME_TO_GROW_MEDIUM_MAX = 240.0f;  // 420 → 240: ~4 мин
+        constexpr float TIME_TO_GROW_BABY_MIN   = 120.0f;   // 180 → 90:  ~1.5 мин
+        constexpr float TIME_TO_GROW_BABY_MAX   = 180.0f;  // 240 → 120: ~2 мин
+        constexpr float TIME_TO_GROW_MEDIUM_MIN = 300.0f;  // 360 → 180: ~3 мин
+        constexpr float TIME_TO_GROW_MEDIUM_MAX = 540.0f;  // 420 → 240: ~4 мин
         constexpr float TIME_ADULT_LIFESPAN     = 1800.0f; // 900 → 1800: 30 мин
 
         // BABY-волчонок
@@ -204,10 +204,10 @@ namespace Config {
         constexpr float SHAKE_AMPLITUDE   = 0.25f;  // визуальная амплитуда тряски
 
         // ── ГОЛОД И СМЕРТЬ ────────────────────────────────────────
-        constexpr float HUNGER_DECAY_RATE        = 0.6f;
-        constexpr float STARVATION_LIMIT         = 60.0f;
-        constexpr float HUNGER_HUNT_TRIGGER      = 45.0f;  // 50 → 45: позже уходит на охоту
-        constexpr float HUNGER_RETURN_THRESHOLD  = 80.0f;  // 65 → 80: раньше возвращается в лес
+        constexpr float HUNGER_DECAY_RATE        = 0.4f;  
+        constexpr float STARVATION_LIMIT         = 100.0f; 
+        constexpr float HUNGER_HUNT_TRIGGER      = 45.0f;  
+        constexpr float HUNGER_RETURN_THRESHOLD  = 80.0f;
 
         // Трава — плохая еда для волка: после её поедания
         // голод падает быстрее на короткое время
