@@ -614,7 +614,7 @@ int main() {
 
         if (hunterControlMode && playerHunter != nullptr && playerHunter->IsAlive()) {
             Vector2 mouseDelta = GetMouseDelta();
-            hunterYaw += mouseDelta.x * 0.0035f;
+            hunterYaw -= mouseDelta.x * 0.0035f;
             hunterPitch -= mouseDelta.y * 0.0035f;
             hunterPitch = Clamp(hunterPitch, -1.2f, 1.2f);
 
@@ -636,7 +636,7 @@ int main() {
             }
         } else if (wolfControlMode && playerWolf != nullptr && playerWolf->IsAlive()) {
             Vector2 mouseDelta = GetMouseDelta();
-            animalYaw += mouseDelta.x * 0.0035f;
+            animalYaw -= mouseDelta.x * 0.0035f;
             animalPitch -= mouseDelta.y * 0.0035f;
             animalPitch = Clamp(animalPitch, -1.0f, 1.0f);
 
