@@ -6,8 +6,8 @@ CameraController::CameraController(const Vector3& startPos, float startYaw, floa
     : position(startPos)
     , yaw(startYaw)
     , pitch(startPitch)
-    , baseSpeed(25.0f)
-    , currentSpeed(25.0f)
+    , baseSpeed(40.0f)
+    , currentSpeed(40.0f)
     , speedMode(SpeedMode::NORMAL)
     , mouseSensitivityX(0.2f)
     , mouseSensitivityY(0.2f)
@@ -30,7 +30,7 @@ void CameraController::UpdateTargetFromInput(float deltaTime) {
     // Скорость с модификаторами
     float speed = baseSpeed;
     if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
-        speed = baseSpeed * 2.0f;
+        speed = baseSpeed * 6.0f;
         speedMode = SpeedMode::FAST;
     }
     else if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {

@@ -220,6 +220,73 @@ void Wolf::TryStartPounce(float distToPrey, World* world) {
         (Color){150,130,100,255}, 6, false);
 }
 
+
+void Wolf::SetPlayerControlled(bool enabled) {
+    playerControlled = enabled;
+    if (playerControlled) {
+        targetPrey = nullptr;
+        mateTarget = nullptr;
+        fightTarget = nullptr;
+        isMating = false;
+        state = AnimalState::WANDERING;
+        targetPosition = position;
+    }
+}
+
+bool Wolf::IsPlayerControlled() const {
+    return playerControlled;
+}
+
+void Wolf::SetPlayerAim(Vector3 forward, Vector3 right) {
+    if (Vector3Length(forward) > 0.01f) controlForward = Vector3Normalize(forward);
+    if (Vector3Length(right) > 0.01f) controlRight = Vector3Normalize(right);
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    if (Vector3Length(flatForward) > 0.01f) {
+        flatForward = Vector3Normalize(flatForward);
+        facingAngle = atan2f(flatForward.x, flatForward.z) * RAD2DEG;
+    }
+}
+
+void Wolf::UpdatePlayerControl(float dt, World* world) {
+    hunger = 100.0f;
+    state = AnimalState::WANDERING;
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    Vector3 flatRight = { controlRight.x, 0.0f, controlRight.z };
+    if (Vector3Length(flatForward) > 0.01f) flatForward = Vector3Normalize(flatForward);
+    if (Vector3Length(flatRight) > 0.01f) flatRight = Vector3Normalize(flatRight);
+
+    Vector3 move = { 0.0f, 0.0f, 0.0f };
+    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) move = Vector3Add(move, flatForward);
+    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) move = Vector3Subtract(move, flatForward);
+    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) move = Vector3Add(move, flatRight);
+    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) move = Vector3Subtract(move, flatRight);
+
+    float currentSpeed = Config::Wolf::SPEED_RUN * CurrentSpeedFactor();
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) currentSpeed *= 1.8f;
+
+    if (Vector3Length(move) > 0.01f) {
+        move = Vector3Normalize(move);
+        const int halfMap = Config::World::MAP_SIZE / 2;
+        float nx = Clamp(position.x + move.x * currentSpeed * dt, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+        float nz = Clamp(position.z + move.z * currentSpeed * dt, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+        if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
+            position.x = nx;
+            position.z = nz;
+        }
+    }
+    position.y = world->GetHeight(position.x, position.z);
+
+    if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyPressed(KEY_SPACE)) {
+        Sheep* target = FindNearestSheepInRadius(world, 3.0f);
+        if (target) {
+            Vector3 sheepPos = target->GetPosition();
+            world->SpawnParticles(sheepPos, RED, 18, false);
+        }
+    }
+}
+
 // ═════════════════════════════════════════════════════════════════════════════
 //                          ВОЗРАСТ
 // ═════════════════════════════════════════════════════════════════════════════
@@ -785,6 +852,11 @@ void Wolf::UpdateFighting(float dt, World* world) {
 
 void Wolf::Update(float deltaTime, World* world) {
     if (!isAlive) return;
+
+    if (playerControlled) {
+        UpdatePlayerControl(deltaTime, world);
+        return;
+    }
 
     if (grassCooldownTimer > 0.0f) {
         grassCooldownTimer -= deltaTime;

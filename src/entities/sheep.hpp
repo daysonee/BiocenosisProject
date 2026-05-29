@@ -48,6 +48,11 @@ private:
     float facingAngle = 0.0f;
     Vector3 lastPosition = { 0.0f, 0.0f, 0.0f };
 
+    bool playerControlled = false;
+    Vector3 controlForward = { 0.0f, 0.0f, 1.0f };
+    Vector3 controlRight = { 1.0f, 0.0f, 0.0f };
+    void UpdatePlayerControl(float deltaTime, World* world);
+
     void PickNewWanderTarget(World* world);
     void ForceEscape(World* world);
 
@@ -84,6 +89,10 @@ public:
     void Draw() override;
 
     void SetFlockCenter(Vector3 center) { flockCenter = center; }
+
+    void SetPlayerControlled(bool enabled);
+    bool IsPlayerControlled() const;
+    void SetPlayerAim(Vector3 forward, Vector3 right);
     Color GetDeathColor() const override { return LIGHTGRAY; }
 
     // Очистка dangling pointers перед удалением dying-сущности
