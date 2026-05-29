@@ -174,85 +174,114 @@ void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
     }
 }
 
-// ========== СИСТЕМА ФИКСИРОВАННЫХ КАМЕР ==========
-struct FixedCamera {
+// ========== СИСТЕМА КАМЕР (Tab = цикл, WASD = вернуться к FREE) ==========
+#include <vector>
+#include <string>
+
+struct CamSlot {
     Vector3 position;
     Vector3 target;
-    const char* name;
+    std::string name;
 };
 
-const FixedCamera fixedCameras[] = {
-    { { 0.0f, 80.0f, -150.0f }, { 0.0f, 30.0f, 0.0f }, "OVERVIEW" },
-    { { -200.0f, 50.0f, -100.0f }, { -150.0f, 30.0f, -80.0f }, "WEST FOREST" },
-    { { 200.0f, 50.0f, -100.0f }, { 150.0f, 30.0f, -80.0f }, "EAST FOREST" },
-    { { -100.0f, 40.0f, 150.0f }, { -80.0f, 25.0f, 100.0f }, "SOUTH BEACH" },
-    { { 100.0f, 60.0f, 120.0f }, { 80.0f, 35.0f, 80.0f }, "NORTH MEADOW" },
-    { { 0.0f, 90.0f, -80.0f }, { 0.0f, 20.0f, 0.0f }, "CENTER" }
-};
-
-const int FIXED_CAMERA_COUNT = sizeof(fixedCameras) / sizeof(fixedCameras[0]);
-
-class FixedCameraSystem {
-private:
-    int currentCameraIndex = 0;
-    bool isActive = false;
-    Camera3D savedCamera;
-    bool hasSavedCamera = false;
+class CameraSystem {
+    std::vector<CamSlot> slots; // 0 = FREE (placeholder), 1..N = fixed
+    int current = 0;            // 0 = свободная камера
+    Camera3D savedFreeCamera = {};
+    bool hasSaved = false;
+    float showPanelTimer = 0.0f; // показ панели после Tab
 
 public:
-    void Activate(const Camera3D& currentCamera) {
-        if (!isActive) {
-            savedCamera = currentCamera;
-            hasSavedCamera = true;
-            isActive = true;
-            currentCameraIndex = 0;
-        }
-    }
-
     void Deactivate() {
-        isActive = false;
+        current = 0;           // Принудительно возвращаем свободную камеру
+        showPanelTimer = 0.0f; // Скрываем UI-панель со списком камер
     }
 
-    bool IsActive() const {
-        return isActive;
+    void Init(Vector3 hutPos) {
+        slots.clear();
+        // 0 — свободная камера (placeholder, позиция не важна)
+        slots.push_back({{0, 0, 0}, {0, 0, 0}, "FREE CAMERA"});
+        // 1 — обзорная
+        slots.push_back({{0, 80, -150}, {0, 30, 0}, "OVERVIEW"});
+        // 2 — хижина охотника
+        slots.push_back({
+            {hutPos.x + 18.0f, hutPos.y + 12.0f, hutPos.z + 18.0f},
+            {hutPos.x, hutPos.y + 2.0f, hutPos.z},
+            "HUNTER'S HUT"
+        });
+        // 3 — западный лес
+        slots.push_back({{-200, 50, -100}, {-150, 30, -80}, "WEST FOREST"});
+        // 4 — восточный луг
+        slots.push_back({{200, 50, 100}, {150, 30, 80}, "EAST MEADOW"});
+        // 5 — южный пляж
+        slots.push_back({{-100, 40, 150}, {-80, 25, 100}, "SOUTH BEACH"});
     }
 
-    void NextCamera() {
-        if (isActive) {
-            currentCameraIndex = (currentCameraIndex + 1) % FIXED_CAMERA_COUNT;
+    void OnTab(Camera3D& camera) {
+        // Сохраняем свободную камеру перед уходом
+        if (current == 0) {
+            savedFreeCamera = camera;
+            hasSaved = true;
+        }
+        current = (current + 1) % (int)slots.size();
+        if (current == 0) {
+            // Вернулись к свободной — восстановить
+            if (hasSaved) camera = savedFreeCamera;
+        } else {
+            camera.position = slots[current].position;
+            camera.target   = slots[current].target;
+        }
+        showPanelTimer = 3.0f; // показать панель на 3 сек
+    }
+
+    // WASD при фиксированной камере — вернуться к свободной
+    void CheckReturnToFree(Camera3D& camera) {
+        if (current == 0) return;
+        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D)) {
+            if (hasSaved) camera = savedFreeCamera;
+            current = 0;
+            showPanelTimer = 2.0f;
         }
     }
 
-    void PrevCamera() {
-        if (isActive) {
-            currentCameraIndex = (currentCameraIndex - 1 + FIXED_CAMERA_COUNT) % FIXED_CAMERA_COUNT;
-        }
+    bool IsFree() const { return current == 0; }
+    int GetCurrent() const { return current; }
+    const char* GetCurrentName() const { return slots[current].name.c_str(); }
+
+    void Update(float dt) {
+        if (showPanelTimer > 0.0f) showPanelTimer -= dt;
     }
 
-    void ApplyToCamera(Camera3D& camera) {
-        if (isActive) {
-            const FixedCamera& fc = fixedCameras[currentCameraIndex];
-            camera.position = fc.position;
-            camera.target = fc.target;
-        }
-    }
+    void DrawPanel(int screenWidth) const {
+        if (showPanelTimer <= 0.0f && current == 0) return; // скрыта
 
-    void RestoreSavedCamera(Camera3D& camera) {
-        if (hasSavedCamera) {
-            camera = savedCamera;
-            hasSavedCamera = false;
-        }
-    }
+        int panelW = 200;
+        int lineH  = 24;
+        int panelH = (int)slots.size() * lineH + 16;
+        
+        // ИЗМЕНЕНО: вместо правого края привязываемся к левому
+        int px = 15; 
+        int py = 15;
 
-    const char* GetCurrentCameraName() const {
-        if (isActive) {
-            return fixedCameras[currentCameraIndex].name;
-        }
-        return "";
-    }
+        // Фон панели
+        float alpha = (showPanelTimer > 0.0f) ? fminf(showPanelTimer, 1.0f) : 0.8f;
+        DrawRectangle(px, py, panelW, panelH,
+                      (Color){0, 0, 0, (unsigned char)(180 * alpha)});
+        DrawRectangleLinesEx(
+            (Rectangle){(float)px, (float)py, (float)panelW, (float)panelH},
+            1.5f, (Color){200, 200, 200, (unsigned char)(200 * alpha)});
 
-    int GetCurrentIndex() const {
-        return currentCameraIndex;
+        for (int i = 0; i < (int)slots.size(); ++i) {
+            int y = py + 8 + i * lineH;
+            bool isCurrent = (i == current);
+            Color textColor = isCurrent
+                ? (Color){255, 220, 80, (unsigned char)(255 * alpha)}  // золотой
+                : (Color){180, 180, 180, (unsigned char)(200 * alpha)};
+            const char* prefix = isCurrent ? "> " : "  ";
+            char line[64];
+            snprintf(line, sizeof(line), "%s%d. %s", prefix, i, slots[i].name.c_str());
+            DrawText(line, px + 8, y, 16, textColor);
+        }
     }
 };
 
@@ -320,7 +349,9 @@ int main() {
     CameraSpawn cameraSpawn(startPos, startPitch, startYaw);
     CameraController cameraController(startPos, startYaw, startPitch);
 
-    FixedCameraSystem fixedCameraSystem;
+    CameraSystem cameraSystem;
+    // Инициализируем камеры после создания мира
+    cameraSystem.Init(myWorld->GetHunterHutPosition());
 
     EcoStatsDisplay stats(1050, 10);
 
@@ -464,6 +495,8 @@ int main() {
                 camera.position = startPos;
                 camera.target = { 0.0f, 20.0f, 0.0f };
                 cameraController.SetPosition(startPos);
+                // Переинициализируем камеры (новая хижина)
+                cameraSystem.Init(myWorld->GetHunterHutPosition());
 
                 // ПЕРЕСЧИТЫВАЕМ НАЧАЛЬНУЮ СТАТИСТИКУ
                 int newInitialSheep = 0, newInitialWolves = 0;
@@ -504,7 +537,7 @@ int main() {
                 hunterPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
                 mouseCaptured = true;
                 DisableCursor();
-                fixedCameraSystem.Deactivate();
+                cameraSystem.Deactivate();
             }
         }
 
@@ -521,7 +554,7 @@ int main() {
                     animalPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
                     mouseCaptured = true;
                     DisableCursor();
-                    fixedCameraSystem.Deactivate();
+                    cameraSystem.Deactivate();
                 }
             }
         }
@@ -539,38 +572,40 @@ int main() {
                     animalPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
                     mouseCaptured = true;
                     DisableCursor();
-                    fixedCameraSystem.Deactivate();
+                    cameraSystem.Deactivate();
                 }
             }
         }
 
-        // ========== УПРАВЛЕНИЕ ФИКСИРОВАННЫМИ КАМЕРАМИ ==========
+        // ========== СИСТЕМА КАМЕР (Tab = цикл) ==========
+        cameraSystem.Update(dt);
+
         if (IsKeyPressed(KEY_TAB)) {
-            if (fixedCameraSystem.IsActive()) {
-                fixedCameraSystem.RestoreSavedCamera(camera);
-                fixedCameraSystem.Deactivate();
-                mouseCaptured = true;
+            // 1. Выходим из режимов управления (чтобы избежать конфликтов координат)
+            ExitAllPlayerModes();
+
+            // 2. ВЫЗЫВАЕМ само переключение камер (меняет индекс и координаты)
+            cameraSystem.OnTab(camera);
+
+            // 3. Управляем захватом мыши в зависимости от того, куда переключились
+            if (cameraSystem.IsFree()) {
+                mouseCaptured = true;   // Вернулись к свободной - прячем мышь
                 DisableCursor();
-            }
-            else {
-                fixedCameraSystem.Activate(camera);
-                mouseCaptured = false;
+            } else {
+                mouseCaptured = false;  // Фиксированная камера - показываем мышь
                 EnableCursor();
             }
         }
 
-        if (fixedCameraSystem.IsActive()) {
-            if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) {
-                fixedCameraSystem.NextCamera();
-            }
-            if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) {
-                fixedCameraSystem.PrevCamera();
+        // WASD при фиксированной камере → вернуться к FREE
+        if (!cameraSystem.IsFree()) {
+            cameraSystem.CheckReturnToFree(camera);
+            if (cameraSystem.IsFree()) {
+                mouseCaptured = true;
+                DisableCursor();
             }
         }
 
-        if (fixedCameraSystem.IsActive()) {
-            fixedCameraSystem.ApplyToCamera(camera);
-        }
 
         // Клавиша O - спавн 10 овец
         if (IsKeyPressed(KEY_O)) {
@@ -670,11 +705,11 @@ int main() {
             camera.position = { sp.x + forward.x * 0.70f, sp.y + 0.95f, sp.z + forward.z * 0.70f };
             camera.target = Vector3Add(camera.position, forward);
             playerSheep->SetPlayerAim(forward, right);
-        } else if (mouseCaptured && !fixedCameraSystem.IsActive()) {
+        } else if (mouseCaptured && cameraSystem.IsFree()) {
             cameraController.Update(dt, camera, true);
         }
 
-        if (!hunterControlMode && !wolfControlMode && !sheepControlMode) {
+        if (!hunterControlMode && !wolfControlMode && !sheepControlMode && cameraSystem.IsFree()) {
             cameraSpawn.Update(dt, camera);
         }
 
@@ -796,22 +831,17 @@ int main() {
                 screenHeight / 2 + 30, 20, YELLOW);
         }
 
-        // ========== ОТРИСОВКА ИНТЕРФЕЙСА КАМЕР ==========
-        if (fixedCameraSystem.IsActive()) {
-            DrawRectangle(0, screenHeight - 80, 400, 80, (Color) { 0, 0, 0, 200 });
-
-            const char* camName = fixedCameraSystem.GetCurrentCameraName();
-            int camNameWidth = MeasureText(camName, 25);
-            DrawText(camName, screenWidth / 2 - camNameWidth / 2, screenHeight - 70, 25, YELLOW);
-
-            DrawText("Press TAB to exit camera mode", screenWidth / 2 - 150, screenHeight - 40, 18, LIGHTGRAY);
-            DrawText("LEFT/RIGHT arrows to change camera", screenWidth / 2 - 170, screenHeight - 20, 16, GRAY);
-
-            char camIndexText[32];
-            snprintf(camIndexText, sizeof(camIndexText), "CAMERA %d/%d",
-                fixedCameraSystem.GetCurrentIndex() + 1, FIXED_CAMERA_COUNT);
-            int idxWidth = MeasureText(camIndexText, 15);
-            DrawText(camIndexText, screenWidth - idxWidth - 20, screenHeight - 25, 15, GRAY);
+        // ========== МИНИ-ПАНЕЛЬ КАМЕР ==========
+        cameraSystem.DrawPanel(screenWidth);
+        // Подсказка текущей камеры внизу (если не свободная)
+        if (!cameraSystem.IsFree()) {
+            const char* camName = cameraSystem.GetCurrentName();
+            int camNameWidth = MeasureText(camName, 22);
+            DrawRectangle(screenWidth / 2 - camNameWidth / 2 - 12,
+                          screenHeight - 45, camNameWidth + 24, 32,
+                          (Color){0, 0, 0, 180});
+            DrawText(camName, screenWidth / 2 - camNameWidth / 2,
+                     screenHeight - 40, 22, YELLOW);
         }
 
         if (!mouseCaptured) {
