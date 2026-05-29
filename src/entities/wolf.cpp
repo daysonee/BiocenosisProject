@@ -282,6 +282,7 @@ void Wolf::UpdatePlayerControl(float dt, World* world) {
         Sheep* target = FindNearestSheepInRadius(world, 3.0f);
         if (target) {
             Vector3 sheepPos = target->GetPosition();
+            target->Die(DeathCause::EATEN_BY_WOLF);
             world->SpawnParticles(sheepPos, RED, 18, false);
         }
     }
