@@ -261,7 +261,7 @@ int main() {
     int screenWidth = 1280;
     int screenHeight = 720;
     InitWindow(screenWidth, screenHeight, "BioCynosis - Ecosystem Simulation");
-
+    TraceLog(LOG_INFO, "CURRENT PATH: %s", GetWorkingDirectory());
     // ========== МЕНЮ ==========
     MenuSettings menuSettings;
     MainMenu mainMenu(menuSettings, screenWidth, screenHeight);

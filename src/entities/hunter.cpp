@@ -16,7 +16,7 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     smokeTimer = 0.0f;
     abilityTimer = 0.0f;
     abilityCooldown = 0.0f;
-    faceTexture = LoadTexture("../resources/zhelezin_face.png");
+    faceTexture = LoadTexture("Projects/213/BiocenosisProject/resources/zhelezin_face.png");
 }
 
 Hunter::~Hunter() {

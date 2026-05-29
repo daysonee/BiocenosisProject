@@ -15,19 +15,19 @@
 
 World::World(){
 
-    zhelezinHalyava = LoadSound("../resources/zhelezin_halyava.wav");
-    zhelezinLaviKontest = LoadSound("../resources/zhelezin_lavikontest.wav");
-    zhelezinNePonayal = LoadSound("../resources/zhelezin_neponyal.wav");
-    zhelezinOnulenie = LoadSound("../resources/zhelezin_onulenie.wav");
-    zhelezinTiOpozdal = LoadSound("../resources/zhelezin_tiopozdal.wav");
-    zhelezinTiUmer = LoadSound("../resources/zhelezin_tiumer.wav");
+    zhelezinHalyava = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_halyava.wav");
+    zhelezinLaviKontest = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_lavikontest.wav");
+    zhelezinNePonayal = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_neponyal.wav");
+    zhelezinOnulenie = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_onulenie.wav");
+    zhelezinTiOpozdal = LoadSound("resources/zhelezin_tiopozdal.wav");
+    zhelezinTiUmer = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_tiumer.wav");
 
-    sheep1 = LoadSound("../resources/sheep1.wav");
-    sheep2 = LoadSound("../resources/sheep2.wav");
-    sheep3 = LoadSound("../resources/sheep3.wav");
+    sheep1 = LoadSound("/resources/sheep1.wav");
+    sheep2 = LoadSound("/resources/sheep2.wav");
+    sheep3 = LoadSound("/resources/sheep3.wav");
 
-    sunny = LoadSound("../resources/sunny.wav");
-    rainning = LoadSound("../resources/rainning.wav");
+    sunny = LoadSound("/resources/sunny.wav");
+    rainning = LoadSound("/resources/rainning.wav");
     plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
     plantCount = 0;
     sheepCount = 0;
