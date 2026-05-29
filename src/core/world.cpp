@@ -10,9 +10,24 @@
 #include <rlgl.h>
 #include "raymath.h"
 #include <algorithm>
+#include "raylib.h"
+
 
 World::World(){
 
+    zhelezinHalyava = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_halyava.wav");
+    zhelezinLaviKontest = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_lavikontest.wav");
+    zhelezinNePonayal = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_neponyal.wav");
+    zhelezinOnulenie = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_onulenie.wav");
+    zhelezinTiOpozdal = LoadSound("resources/zhelezin_tiopozdal.wav");
+    zhelezinTiUmer = LoadSound("Projects/213/BiocenosisProject/resources/zhelezin_tiumer.wav");
+
+    sheep1 = LoadSound("/resources/sheep1.wav");
+    sheep2 = LoadSound("/resources/sheep2.wav");
+    sheep3 = LoadSound("/resources/sheep3.wav");
+
+    sunny = LoadSound("/resources/sunny.wav");
+    rainning = LoadSound("/resources/rainning.wav");
     plantSpawnTimer = Config::World::PLANT_SPAWN_DELAY;
     plantCount = 0;
     sheepCount = 0;
@@ -24,6 +39,8 @@ World::World(){
 
     currentWeather = WeatherState::SUNNY;
     weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
+    
+
 
     trunkMesh = GenMeshCylinder(0.15f, 0.8f, 5);
     leafBottomMesh = GenMeshCone(1.2f, 1.2f, 5);
@@ -67,11 +84,8 @@ World::World(){
             if (!overlap) {
                 treePositions.push_back({rx, ry, rz}); 
 
-                // ФИКС ЛЕВИТАЦИИ: основание ствола опускаем на 0.2 ниже
-                // средней высоты, чтобы при наклоне поверхности корни
-                // не висели в воздухе. GenMeshCylinder строится вверх от точки.
                 const float TRUNK_SINK   = 0.2f;
-                const float TRUNK_HEIGHT = 0.8f; // совпадает с GenMeshCylinder
+                const float TRUNK_HEIGHT = 0.8f; 
                 float trunkBaseY = ry - TRUNK_SINK;
                 float trunkTopY  = trunkBaseY + TRUNK_HEIGHT;
 
@@ -116,9 +130,7 @@ World::World(){
                Config::Grass::Type::COASTAL);
 
 
-    // ─── ГАРАНТИРОВАННЫЙ СПАВН ДОМИКА (ГОРЫ -> ЛЕС) ───
     bool hutSpawned = false;
-    // Убрали "const int", так как halfMap уже объявлен в начале конструктора!
 
     // Попытка 1: Ищем высокое место в горах (выше BIOME_THRESHOLD)
     for (int attempts = 0; attempts < 1500; ++attempts) {
@@ -168,6 +180,8 @@ World::World(){
 }
 
 World::~World(){
+    UnloadSound(zhelezinHalyava);
+
     UnloadModel(terrainModel);
 
     UnloadMesh(trunkMesh);
@@ -185,6 +199,21 @@ World::~World(){
     UnloadMaterial(coastalMat);
 }
 
+void World::PlayZhelezinHalyava() const { if (zhelezinHalyava.stream.buffer != nullptr) PlaySound(zhelezinHalyava);}
+void World::PlayZhelezinLaviKontest() const { if (zhelezinLaviKontest.stream.buffer != nullptr) PlaySound(zhelezinLaviKontest);}
+void World::PlayZhelezinNePonayal() const { if (zhelezinNePonayal.stream.buffer != nullptr) PlaySound( zhelezinNePonayal);}
+void World::PlayZhelezinOnulenie() const { if (zhelezinOnulenie.stream.buffer != nullptr) PlaySound(zhelezinOnulenie);}
+void World::PlayZhelezinTiOpozdal() const { if (zhelezinTiOpozdal.stream.buffer != nullptr) PlaySound(zhelezinTiOpozdal);}
+void World::PlayZhelezinTiUmer() const { if (zhelezinTiUmer.stream.buffer != nullptr) PlaySound(zhelezinTiUmer);}
+
+void World::PlaySheep1() const { if (sheep1.stream.buffer != nullptr) PlaySound(sheep1);}
+void World::PlaySheep2() const { if (sheep2.stream.buffer != nullptr) PlaySound(sheep2);}
+void World::PlaySheep3() const { if (sheep3.stream.buffer != nullptr) PlaySound(sheep3);}
+
+void World::PlaySunny() const { if (sunny.stream.buffer != nullptr) PlaySound(sunny);}
+void World::PlayRainning() const { if (rainning.stream.buffer != nullptr) PlaySound(rainning);}
+
+
 void World::ChangeWeather(){
     if (currentWeather == WeatherState::SUNNY){
         currentWeather = WeatherState::RAINING;
@@ -194,8 +223,10 @@ void World::ChangeWeather(){
         tideTargetOffset = Config::World::TIDE_RISE_AMOUNT;
         tideElapsed      = 0.0f;
         tideDuration     = Config::World::TIDE_RISE_DURATION;
+        PlayRainning();
     } else{
         currentWeather = WeatherState::SUNNY;
+        PlaySunny();
         weatherTimer = (float)GetRandomValue(Config::World::WEATHER_SUNNY_MIN, Config::World::WEATHER_SUNNY_MAX);
         // ОТЛИВ: уровень воды возвращается за 60 сек
         tideSourceOffset = waterLevelOffset;

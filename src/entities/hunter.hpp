@@ -31,6 +31,7 @@ private:
     float facingAngle; // Запоминает угол поворота, чтобы не сбрасываться на 0
     float smokeTimer;  // Таймер для дыма из трубы
 
+    Texture2D faceTexture;
     Sound killPhraseSounds[3];
     bool killPhraseSoundLoaded[3];
     bool playerControlled;
@@ -56,7 +57,7 @@ public:
 
     void Update(float deltaTime, World* world) override;
     void Draw() override;
-    
+    void PlayShoot(World* world);
     void Draw2D(Camera camera);
 
     void SetPlayerControlled(bool enabled);

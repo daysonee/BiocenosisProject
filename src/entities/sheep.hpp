@@ -100,4 +100,6 @@ public:
         if (targetHunter == dying) targetHunter = nullptr;
         if (mateTarget == dying)   mateTarget   = nullptr;
     }
+
+    void PlayBlee(World* world);
 };

@@ -5,6 +5,8 @@
 #include "../core/world.hpp"
 #include "raymath.h"
 #include "rlgl.h" 
+#include <cstdlib> 
+#include <ctime> 
 
 // Положи свои mp3 сюда. Пути считаются от папки, откуда запускается игра.
 // Например: resources/sounds/hunter_obnulenie.mp3
@@ -25,6 +27,7 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     smokeTimer = 0.0f;
     abilityTimer = 0.0f;
     abilityCooldown = 0.0f;
+    faceTexture = LoadTexture("Projects/213/BiocenosisProject/resources/zhelezin_face.png");
     playerControlled = false;
     controlForward = { 0.0f, 0.0f, 1.0f };
     controlRight = { 1.0f, 0.0f, 0.0f };
@@ -41,6 +44,8 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
 
 Hunter::~Hunter() {
     UnloadKillPhraseSounds();
+    UnloadTexture(faceTexture);
+
 }
 
 void Hunter::LoadKillPhraseSounds() {
@@ -152,8 +157,7 @@ void Hunter::ShootEntity(Entity* target, World* world) {
     }
 
     target->Die();
-    PlayRandomKillPhrase();
-
+    PlayShoot(world);
     Color hitColor = MAROON;
     if (dynamic_cast<Sheep*>(target) != nullptr) hitColor = RED;
     world->SpawnParticles(targetPos, hitColor, 15, false);
@@ -276,9 +280,25 @@ void Hunter::Update(float deltaTime, World* world) {
         
         if (nearest) {
             float dist = Vector3Distance(position, nearest->GetPosition());
-            
+
             // Если волк в зоне поражения и ружье заряжено — стреляем рефлекторно из любого состояния!
             if (dist <= Config::Hunter::SHOOT_RANGE && shootCooldown <= 0.0f) {
+                nearest->Die();
+                
+                PlayShoot(world);
+                // Партиклы выстрела и крови
+                world->SpawnParticles(nearest->GetPosition(), MAROON, 15, false);
+                
+                Vector3 gunMuzzle = position;
+                gunMuzzle.y += 1.1f; 
+                Vector3 dirToWolf = Vector3Normalize(Vector3Subtract(nearest->GetPosition(), position));
+                gunMuzzle.x += dirToWolf.x * 1.2f; 
+                gunMuzzle.z += dirToWolf.z * 1.2f;
+                
+                world->SpawnParticles(gunMuzzle, ORANGE, 8, false); 
+                world->SpawnParticles(gunMuzzle, GRAY, 12, false);  
+
+                shootCooldown = Config::Hunter::SHOOT_COOLDOWN;
                 ShootEntity(nearest, world);
                 
                 // Оцениваем обстановку после выстрела
@@ -459,7 +479,7 @@ void Hunter::Draw() {
     // Голова 
     DrawAnimatedPart({0.0f, 1.7f, 0.0f}, {0.35f, 0.35f, 0.35f}, BEIGE, 0.0f, 0.0f); 
     // Щетина
-    DrawCube({0.0f, 1.59f, 0.02f}, 0.36f, 0.12f, 0.36f, stubbleColor);
+    // DrawCube({0.0f, 1.59f, 0.02f}, 0.36f, 0.12f, 0.36f, stubbleColor);
 
     // Кудрявые волосы
     DrawSphere({0.0f, 1.90f, 0.0f}, 0.18f, hairColor);       // макушка
@@ -485,6 +505,23 @@ void Hunter::Draw() {
     DrawAnimatedPart({-0.2f, 0.8f, 0.0f}, {0.2f, 0.8f, 0.2f}, jeansColor, legSwingX, -waddleAngleZ);
     DrawAnimatedPart({ 0.2f, 0.8f, 0.0f}, {0.2f, 0.8f, 0.2f}, jeansColor, -legSwingX, -waddleAngleZ);
 
+    rlSetTexture(faceTexture.id);
+    rlBegin(RL_QUADS);
+        rlColor4ub(255, 255, 255, 255);
+        rlNormal3f(0.0f, 0.0f, 1.0f); // Направление взгляда — вперед
+
+        // Привязка углов картинки (UV) к 3D координатам лица
+        // Верхний левый угол
+        rlTexCoord2f(0.0f, 0.0f); rlVertex3f(-0.175f, 1.875f, 0.185f);
+        // Нижний левый угол
+        rlTexCoord2f(0.0f, 1.0f); rlVertex3f(-0.175f, 1.525f, 0.185f);
+        // Нижний правый угол
+        rlTexCoord2f(1.0f, 1.0f); rlVertex3f( 0.175f, 1.525f, 0.185f);
+        // Верхний правый угол
+        rlTexCoord2f(1.0f, 0.0f); rlVertex3f( 0.175f, 1.875f, 0.185f);
+    rlEnd();
+    rlSetTexture(0);
+
     rlPopMatrix(); 
 }
 
@@ -506,4 +543,16 @@ void Hunter::Draw2D(Camera camera) {
 
     DrawRectangle(screenPos.x - textWidth / 2 - 6, screenPos.y - 10, textWidth + 12, 24, (Color){0, 0, 0, 140});
     DrawText(name, screenPos.x - textWidth / 2, screenPos.y - 7, fontSize, GOLD);
+}
+
+void Hunter::PlayShoot(World* world){
+    srand(static_cast<unsigned int>(time(0)));
+    int num = rand() % 6;
+    if (num == 0) world->PlayZhelezinHalyava();
+    if (num == 1) world->PlayZhelezinLaviKontest();
+    if (num == 2) world->PlayZhelezinNePonayal();
+    if (num == 3) world->PlayZhelezinOnulenie();
+    if (num == 5) world->PlayZhelezinTiOpozdal();
+    if (num == 6) world->PlayZhelezinTiUmer();
+
 }
