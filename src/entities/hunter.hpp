@@ -1,8 +1,10 @@
 #pragma once
 #include "../core/entity.hpp"
 #include "../core/constants.hpp"
+#include "raylib.h"
 
 class Wolf;
+class Sheep;
 
 enum class HunterState {
     RESTING,    
@@ -29,17 +31,38 @@ private:
     float facingAngle; // Запоминает угол поворота, чтобы не сбрасываться на 0
     float smokeTimer;  // Таймер для дыма из трубы
 
+    Sound killPhraseSounds[3];
+    bool killPhraseSoundLoaded[3];
+    bool playerControlled;
+    Vector3 controlForward;
+    Vector3 controlRight;
+    Vector3 cameraShootOrigin;
+    Vector3 cameraShootDir;
+    bool shootRequested;
+
+    void LoadKillPhraseSounds();
+    void UnloadKillPhraseSounds();
+    void PlayRandomKillPhrase();
+    void ShootEntity(Entity* target, World* world);
+    Entity* FindShootTargetByRay(World* world, Vector3 rayOrigin, Vector3 rayDir);
+    void UpdatePlayerControl(float deltaTime, World* world);
+
     void MoveTowards(Vector3 target, float speed, float deltaTime, World* world);
     Wolf* FindNearestWolf(World* world);
 
 public:
     Hunter(Vector3 startPosition);
-    ~Hunter() override = default;
+    ~Hunter() override;
 
     void Update(float deltaTime, World* world) override;
     void Draw() override;
     
     void Draw2D(Camera camera);
+
+    void SetPlayerControlled(bool enabled);
+    bool IsPlayerControlled() const;
+    void SetPlayerAim(Vector3 forward, Vector3 right, Vector3 cameraOrigin);
+    void RequestShoot();
     
     Color GetDeathColor() const override { return MAROON; }
 };

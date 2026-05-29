@@ -117,10 +117,74 @@ Sheep::Sheep(Vector3 startPosition, Config::Sheep::AgeStage startStage)
     }
 }
 
+
+void Sheep::SetPlayerControlled(bool enabled) {
+    playerControlled = enabled;
+    if (playerControlled) {
+        targetHunter = nullptr;
+        mateTarget = nullptr;
+        isMating = false;
+        tideFrozen = false;
+        state = AnimalState::WANDERING;
+        targetPosition = position;
+    }
+}
+
+bool Sheep::IsPlayerControlled() const {
+    return playerControlled;
+}
+
+void Sheep::SetPlayerAim(Vector3 forward, Vector3 right) {
+    if (Vector3Length(forward) > 0.01f) controlForward = Vector3Normalize(forward);
+    if (Vector3Length(right) > 0.01f) controlRight = Vector3Normalize(right);
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    if (Vector3Length(flatForward) > 0.01f) {
+        flatForward = Vector3Normalize(flatForward);
+        facingAngle = atan2f(flatForward.x, flatForward.z) * RAD2DEG;
+    }
+}
+
+void Sheep::UpdatePlayerControl(float deltaTime, World* world) {
+    hunger = myMaxHunger;
+    state = AnimalState::WANDERING;
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    Vector3 flatRight = { controlRight.x, 0.0f, controlRight.z };
+    if (Vector3Length(flatForward) > 0.01f) flatForward = Vector3Normalize(flatForward);
+    if (Vector3Length(flatRight) > 0.01f) flatRight = Vector3Normalize(flatRight);
+
+    Vector3 move = { 0.0f, 0.0f, 0.0f };
+    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) move = Vector3Add(move, flatForward);
+    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) move = Vector3Subtract(move, flatForward);
+    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) move = Vector3Add(move, flatRight);
+    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) move = Vector3Subtract(move, flatRight);
+
+    float currentSpeed = myWalkSpeed;
+    if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) currentSpeed = myRunSpeed * 1.6f;
+
+    if (Vector3Length(move) > 0.01f) {
+        move = Vector3Normalize(move);
+        const int halfMap = Config::World::MAP_SIZE / 2;
+        float nx = Clamp(position.x + move.x * currentSpeed * deltaTime, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+        float nz = Clamp(position.z + move.z * currentSpeed * deltaTime, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+        if (world->GetHeight(nx, nz) > world->GetCurrentWaterLevel()) {
+            position.x = nx;
+            position.z = nz;
+        }
+    }
+    position.y = world->GetHeight(position.x, position.z);
+}
+
 // ─── Update ──────────────────────────────────────────────────────────────────
 
 void Sheep::Update(float deltaTime, World* world) {
     if (!IsAlive()) return;
+
+    if (playerControlled) {
+        UpdatePlayerControl(deltaTime, world);
+        return;
+    }
 
     // ── 1. ГОЛОД (всегда, даже во время мейтинга) ────────────────────────────
     hunger -= Config::Sheep::HUNGER_DECAY_RATE * deltaTime;

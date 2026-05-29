@@ -1,8 +1,18 @@
+#pragma warning(disable: 4576)
 #include "hunter.hpp"
 #include "wolf.hpp"
+#include "sheep.hpp"
 #include "../core/world.hpp"
 #include "raymath.h"
 #include "rlgl.h" 
+
+// Положи свои mp3 сюда. Пути считаются от папки, откуда запускается игра.
+// Например: resources/sounds/hunter_obnulenie.mp3
+static const char* HUNTER_KILL_PHRASE_PATHS[3] = {
+    "resources/sounds/hunter_obnulenie.mp3",
+    "resources/sounds/hunter_halava.mp3",
+    "resources/sounds/hunter_opazdayu.mp3"
+};
 
 Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     hutPosition = startPosition;
@@ -15,6 +25,194 @@ Hunter::Hunter(Vector3 startPosition) : Entity(startPosition) {
     smokeTimer = 0.0f;
     abilityTimer = 0.0f;
     abilityCooldown = 0.0f;
+    playerControlled = false;
+    controlForward = { 0.0f, 0.0f, 1.0f };
+    controlRight = { 1.0f, 0.0f, 0.0f };
+    cameraShootOrigin = startPosition;
+    cameraShootDir = { 0.0f, 0.0f, 1.0f };
+    shootRequested = false;
+
+    for (int i = 0; i < 3; ++i) {
+        killPhraseSounds[i] = { 0 };
+        killPhraseSoundLoaded[i] = false;
+    }
+    LoadKillPhraseSounds();
+}
+
+Hunter::~Hunter() {
+    UnloadKillPhraseSounds();
+}
+
+void Hunter::LoadKillPhraseSounds() {
+    for (int i = 0; i < 3; ++i) {
+        if (FileExists(HUNTER_KILL_PHRASE_PATHS[i])) {
+            killPhraseSounds[i] = LoadSound(HUNTER_KILL_PHRASE_PATHS[i]);
+            killPhraseSoundLoaded[i] = (killPhraseSounds[i].stream.buffer != nullptr);
+        }
+    }
+}
+
+void Hunter::UnloadKillPhraseSounds() {
+    for (int i = 0; i < 3; ++i) {
+        if (killPhraseSoundLoaded[i]) {
+            UnloadSound(killPhraseSounds[i]);
+            killPhraseSoundLoaded[i] = false;
+        }
+    }
+}
+
+void Hunter::PlayRandomKillPhrase() {
+    int loadedIndexes[3];
+    int loadedCount = 0;
+
+    for (int i = 0; i < 3; ++i) {
+        if (killPhraseSoundLoaded[i]) {
+            loadedIndexes[loadedCount++] = i;
+        }
+    }
+
+    if (loadedCount == 0) return;
+
+    int randomIndex = loadedIndexes[GetRandomValue(0, loadedCount - 1)];
+    PlaySound(killPhraseSounds[randomIndex]);
+}
+
+
+void Hunter::SetPlayerControlled(bool enabled) {
+    playerControlled = enabled;
+    if (playerControlled) {
+        state = HunterState::WANDERING;
+        targetWolf = nullptr;
+        targetPosition = position;
+    }
+}
+
+bool Hunter::IsPlayerControlled() const {
+    return playerControlled;
+}
+
+
+void Hunter::SetPlayerAim(Vector3 forward, Vector3 right, Vector3 cameraOrigin) {
+    if (Vector3Length(forward) > 0.01f) controlForward = Vector3Normalize(forward);
+    if (Vector3Length(right) > 0.01f) controlRight = Vector3Normalize(right);
+    cameraShootOrigin = cameraOrigin;
+    cameraShootDir = controlForward;
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    if (Vector3Length(flatForward) > 0.01f) {
+        flatForward = Vector3Normalize(flatForward);
+        facingAngle = atan2f(flatForward.x, flatForward.z) * RAD2DEG;
+    }
+}
+
+void Hunter::RequestShoot() {
+    shootRequested = true;
+}
+
+Entity* Hunter::FindShootTargetByRay(World* world, Vector3 rayOrigin, Vector3 rayDir) {
+    if (Vector3Length(rayDir) <= 0.01f) return nullptr;
+    rayDir = Vector3Normalize(rayDir);
+
+    Entity* best = nullptr;
+    float bestT = Config::Hunter::SHOOT_RANGE * 3.0f;
+    const float HIT_RADIUS = 1.6f;
+
+    for (const auto& entity : world->GetEntities()) {
+        if (!entity->IsAlive()) continue;
+
+        Entity* target = entity.get();
+        bool canShoot = (dynamic_cast<Wolf*>(target) != nullptr) ||
+                        (dynamic_cast<Sheep*>(target) != nullptr);
+        if (!canShoot) continue;
+
+        Vector3 targetPos = target->GetPosition();
+        targetPos.y += 0.8f;
+        Vector3 toTarget = Vector3Subtract(targetPos, rayOrigin);
+        float t = Vector3DotProduct(toTarget, rayDir);
+        if (t < 0.0f || t > bestT) continue;
+
+        Vector3 closestPoint = Vector3Add(rayOrigin, Vector3Scale(rayDir, t));
+        float missDist = Vector3Distance(closestPoint, targetPos);
+        if (missDist <= HIT_RADIUS) {
+            bestT = t;
+            best = target;
+        }
+    }
+
+    return best;
+}
+
+void Hunter::ShootEntity(Entity* target, World* world) {
+    if (!target || shootCooldown > 0.0f) return;
+
+    Vector3 targetPos = target->GetPosition();
+    Vector3 dirToTarget = Vector3Subtract(targetPos, position);
+    if (Vector3Length(dirToTarget) > 0.01f) {
+        facingAngle = atan2f(dirToTarget.x, dirToTarget.z) * RAD2DEG;
+    }
+
+    target->Die();
+    PlayRandomKillPhrase();
+
+    Color hitColor = MAROON;
+    if (dynamic_cast<Sheep*>(target) != nullptr) hitColor = RED;
+    world->SpawnParticles(targetPos, hitColor, 15, false);
+
+    Vector3 gunMuzzle = position;
+    gunMuzzle.y += 1.1f;
+    dirToTarget = Vector3Normalize(Vector3Subtract(targetPos, position));
+    gunMuzzle.x += dirToTarget.x * 1.2f;
+    gunMuzzle.z += dirToTarget.z * 1.2f;
+
+    world->SpawnParticles(gunMuzzle, ORANGE, 8, false);
+    world->SpawnParticles(gunMuzzle, GRAY, 12, false);
+
+    shootCooldown = Config::Hunter::SHOOT_COOLDOWN;
+}
+
+void Hunter::UpdatePlayerControl(float deltaTime, World* world) {
+    state = HunterState::WANDERING;
+    targetWolf = nullptr;
+
+    Vector3 flatForward = { controlForward.x, 0.0f, controlForward.z };
+    Vector3 flatRight = { controlRight.x, 0.0f, controlRight.z };
+    if (Vector3Length(flatForward) > 0.01f) flatForward = Vector3Normalize(flatForward);
+    if (Vector3Length(flatRight) > 0.01f) flatRight = Vector3Normalize(flatRight);
+
+    Vector3 move = { 0.0f, 0.0f, 0.0f };
+
+    if (IsKeyDown(KEY_W) || IsKeyDown(KEY_UP)) move = Vector3Add(move, flatForward);
+    if (IsKeyDown(KEY_S) || IsKeyDown(KEY_DOWN)) move = Vector3Subtract(move, flatForward);
+    if (IsKeyDown(KEY_D) || IsKeyDown(KEY_RIGHT)) move = Vector3Add(move, flatRight);
+    if (IsKeyDown(KEY_A) || IsKeyDown(KEY_LEFT)) move = Vector3Subtract(move, flatRight);
+
+    if (Vector3Length(move) > 0.01f) {
+        move = Vector3Normalize(move);
+
+        float currentSpeed = Config::Hunter::SPEED_WALK;
+        if (IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT)) {
+            currentSpeed *= 3.0f;
+        }
+
+        Vector3 nextPos = position;
+        nextPos.x += move.x * currentSpeed * deltaTime;
+        nextPos.z += move.z * currentSpeed * deltaTime;
+
+        const int halfMap = Config::World::MAP_SIZE / 2;
+        nextPos.x = Clamp(nextPos.x, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+        nextPos.z = Clamp(nextPos.z, -(float)halfMap + 2.0f, (float)halfMap - 2.0f);
+
+        if (world->GetHeight(nextPos.x, nextPos.z) > world->GetCurrentWaterLevel()) {
+            position.x = nextPos.x;
+            position.z = nextPos.z;
+        }
+        position.y = world->GetHeight(position.x, position.z);
+    }
+
+    if (shootRequested && shootCooldown <= 0.0f) {
+        ShootEntity(FindShootTargetByRay(world, cameraShootOrigin, cameraShootDir), world);
+    }
+    shootRequested = false;
 }
 
 
@@ -66,6 +264,11 @@ void Hunter::Update(float deltaTime, World* world) {
     if (abilityCooldown > 0.0f) abilityCooldown -= deltaTime;
     if (abilityTimer > 0.0f) abilityTimer -= deltaTime;
 
+    if (playerControlled) {
+        UpdatePlayerControl(deltaTime, world);
+        return;
+    }
+
     // === 1. РЕФЛЕКСЫ ОХОТНИКА (Глобальная проверка) ===
     // Если Железин не спит в хижине, он всегда сканирует местность
     if (state != HunterState::RESTING) {
@@ -76,21 +279,7 @@ void Hunter::Update(float deltaTime, World* world) {
             
             // Если волк в зоне поражения и ружье заряжено — стреляем рефлекторно из любого состояния!
             if (dist <= Config::Hunter::SHOOT_RANGE && shootCooldown <= 0.0f) {
-                nearest->Die();
-                
-                // Партиклы выстрела и крови
-                world->SpawnParticles(nearest->GetPosition(), MAROON, 15, false);
-                
-                Vector3 gunMuzzle = position;
-                gunMuzzle.y += 1.1f; 
-                Vector3 dirToWolf = Vector3Normalize(Vector3Subtract(nearest->GetPosition(), position));
-                gunMuzzle.x += dirToWolf.x * 1.2f; 
-                gunMuzzle.z += dirToWolf.z * 1.2f;
-                
-                world->SpawnParticles(gunMuzzle, ORANGE, 8, false); 
-                world->SpawnParticles(gunMuzzle, GRAY, 12, false);  
-                
-                shootCooldown = Config::Hunter::SHOOT_COOLDOWN;
+                ShootEntity(nearest, world);
                 
                 // Оцениваем обстановку после выстрела
                 Wolf* nextWolf = FindNearestWolf(world);
@@ -224,13 +413,16 @@ void DrawAnimatedPart(Vector3 offset, Vector3 size, Color color, float rotateX, 
 }
 
 void Hunter::Draw() {
-    if (state == HunterState::RESTING) return;
+    if (state == HunterState::RESTING && !playerControlled) return;
 
     float time = GetTime(); 
     float speed = 0.0f;     
     float intensity = 0.0f; 
 
-    if (state == HunterState::CHASING) {
+    if (playerControlled && (IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D) || IsKeyDown(KEY_UP) || IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_RIGHT))) {
+        speed = 14.0f;
+        intensity = 0.8f;
+    } else if (state == HunterState::CHASING) {
         // Задаем базовую скорость анимации ног при погоне
         speed = 18.0f; 
         
@@ -297,7 +489,7 @@ void Hunter::Draw() {
 }
 
 void Hunter::Draw2D(Camera camera) {
-    if (state == HunterState::RESTING) return; 
+    if (state == HunterState::RESTING && !playerControlled) return; 
 
     Vector3 tagWorldPos = { position.x, position.y + 2.5f, position.z };
     Vector3 camToHunter = Vector3Subtract(tagWorldPos, camera.position);

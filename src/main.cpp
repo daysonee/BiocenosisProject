@@ -174,109 +174,85 @@ void SpawnCrabsOnBeaches(World& world, int countToSpawn) {
     }
 }
 
-// ========== СИСТЕМА КАМЕР (Tab = цикл, WASD = вернуться к FREE) ==========
-#include <vector>
-#include <string>
-
-struct CamSlot {
+// ========== СИСТЕМА ФИКСИРОВАННЫХ КАМЕР ==========
+struct FixedCamera {
     Vector3 position;
     Vector3 target;
-    std::string name;
+    const char* name;
 };
 
-class CameraSystem {
-    std::vector<CamSlot> slots; // 0 = FREE (placeholder), 1..N = fixed
-    int current = 0;            // 0 = свободная камера
-    Camera3D savedFreeCamera = {};
-    bool hasSaved = false;
-    float showPanelTimer = 0.0f; // показ панели после Tab
+const FixedCamera fixedCameras[] = {
+    { { 0.0f, 80.0f, -150.0f }, { 0.0f, 30.0f, 0.0f }, "OVERVIEW" },
+    { { -200.0f, 50.0f, -100.0f }, { -150.0f, 30.0f, -80.0f }, "WEST FOREST" },
+    { { 200.0f, 50.0f, -100.0f }, { 150.0f, 30.0f, -80.0f }, "EAST FOREST" },
+    { { -100.0f, 40.0f, 150.0f }, { -80.0f, 25.0f, 100.0f }, "SOUTH BEACH" },
+    { { 100.0f, 60.0f, 120.0f }, { 80.0f, 35.0f, 80.0f }, "NORTH MEADOW" },
+    { { 0.0f, 90.0f, -80.0f }, { 0.0f, 20.0f, 0.0f }, "CENTER" }
+};
+
+const int FIXED_CAMERA_COUNT = sizeof(fixedCameras) / sizeof(fixedCameras[0]);
+
+class FixedCameraSystem {
+private:
+    int currentCameraIndex = 0;
+    bool isActive = false;
+    Camera3D savedCamera;
+    bool hasSavedCamera = false;
 
 public:
-    void Init(Vector3 hutPos) {
-        slots.clear();
-        // 0 — свободная камера (placeholder, позиция не важна)
-        slots.push_back({{0, 0, 0}, {0, 0, 0}, "FREE CAMERA"});
-        // 1 — обзорная
-        slots.push_back({{0, 80, -150}, {0, 30, 0}, "OVERVIEW"});
-        // 2 — хижина охотника
-        slots.push_back({
-            {hutPos.x + 18.0f, hutPos.y + 12.0f, hutPos.z + 18.0f},
-            {hutPos.x, hutPos.y + 2.0f, hutPos.z},
-            "HUNTER'S HUT"
-        });
-        // 3 — западный лес
-        slots.push_back({{-200, 50, -100}, {-150, 30, -80}, "WEST FOREST"});
-        // 4 — восточный луг
-        slots.push_back({{200, 50, 100}, {150, 30, 80}, "EAST MEADOW"});
-        // 5 — южный пляж
-        slots.push_back({{-100, 40, 150}, {-80, 25, 100}, "SOUTH BEACH"});
-    }
-
-    // Tab — переключиться на следующую камеру по кругу
-    void OnTab(Camera3D& camera) {
-        // Сохраняем свободную камеру перед уходом
-        if (current == 0) {
-            savedFreeCamera = camera;
-            hasSaved = true;
-        }
-        current = (current + 1) % (int)slots.size();
-        if (current == 0) {
-            // Вернулись к свободной — восстановить
-            if (hasSaved) camera = savedFreeCamera;
-        } else {
-            camera.position = slots[current].position;
-            camera.target   = slots[current].target;
-        }
-        showPanelTimer = 3.0f; // показать панель на 3 сек
-    }
-
-    // WASD при фиксированной камере — вернуться к свободной
-    void CheckReturnToFree(Camera3D& camera) {
-        if (current == 0) return;
-        if (IsKeyDown(KEY_W) || IsKeyDown(KEY_A) || IsKeyDown(KEY_S) || IsKeyDown(KEY_D)) {
-            if (hasSaved) camera = savedFreeCamera;
-            current = 0;
-            showPanelTimer = 2.0f;
+    void Activate(const Camera3D& currentCamera) {
+        if (!isActive) {
+            savedCamera = currentCamera;
+            hasSavedCamera = true;
+            isActive = true;
+            currentCameraIndex = 0;
         }
     }
 
-    bool IsFree() const { return current == 0; }
-    int GetCurrent() const { return current; }
-    const char* GetCurrentName() const { return slots[current].name.c_str(); }
-
-    void Update(float dt) {
-        if (showPanelTimer > 0.0f) showPanelTimer -= dt;
+    void Deactivate() {
+        isActive = false;
     }
 
-    // Рисуем мини-панель со списком камер в правом верхнем углу
-    void DrawPanel(int screenWidth) const {
-        if (showPanelTimer <= 0.0f && current == 0) return; // скрыта
+    bool IsActive() const {
+        return isActive;
+    }
 
-        int panelW = 200;
-        int lineH  = 24;
-        int panelH = (int)slots.size() * lineH + 16;
-        int px = screenWidth - panelW - 15;
-        int py = 15;
-
-        // Фон панели
-        float alpha = (showPanelTimer > 0.0f) ? fminf(showPanelTimer, 1.0f) : 0.8f;
-        DrawRectangle(px, py, panelW, panelH,
-                      (Color){0, 0, 0, (unsigned char)(180 * alpha)});
-        DrawRectangleLinesEx(
-            (Rectangle){(float)px, (float)py, (float)panelW, (float)panelH},
-            1.5f, (Color){200, 200, 200, (unsigned char)(200 * alpha)});
-
-        for (int i = 0; i < (int)slots.size(); ++i) {
-            int y = py + 8 + i * lineH;
-            bool isCurrent = (i == current);
-            Color textColor = isCurrent
-                ? (Color){255, 220, 80, (unsigned char)(255 * alpha)}  // золотой
-                : (Color){180, 180, 180, (unsigned char)(200 * alpha)};
-            const char* prefix = isCurrent ? "> " : "  ";
-            char line[64];
-            snprintf(line, sizeof(line), "%s%d. %s", prefix, i, slots[i].name.c_str());
-            DrawText(line, px + 8, y, 16, textColor);
+    void NextCamera() {
+        if (isActive) {
+            currentCameraIndex = (currentCameraIndex + 1) % FIXED_CAMERA_COUNT;
         }
+    }
+
+    void PrevCamera() {
+        if (isActive) {
+            currentCameraIndex = (currentCameraIndex - 1 + FIXED_CAMERA_COUNT) % FIXED_CAMERA_COUNT;
+        }
+    }
+
+    void ApplyToCamera(Camera3D& camera) {
+        if (isActive) {
+            const FixedCamera& fc = fixedCameras[currentCameraIndex];
+            camera.position = fc.position;
+            camera.target = fc.target;
+        }
+    }
+
+    void RestoreSavedCamera(Camera3D& camera) {
+        if (hasSavedCamera) {
+            camera = savedCamera;
+            hasSavedCamera = false;
+        }
+    }
+
+    const char* GetCurrentCameraName() const {
+        if (isActive) {
+            return fixedCameras[currentCameraIndex].name;
+        }
+        return "";
+    }
+
+    int GetCurrentIndex() const {
+        return currentCameraIndex;
     }
 };
 
@@ -331,7 +307,17 @@ int main() {
 
     // Охотник живёт в своей хижине. Спавним ровно ОДНОГО, в точке хижины.
     Vector3 hutPos = myWorld->GetHunterHutPosition();
-    myWorld->AddEntity(std::make_unique<Hunter>(hutPos));
+    Hunter* playerHunter = new Hunter(hutPos);
+    myWorld->AddEntity(std::unique_ptr<Hunter>(playerHunter));
+    bool hunterControlMode = false;
+    bool wolfControlMode = false;
+    bool sheepControlMode = false;
+    Wolf* playerWolf = nullptr;
+    Sheep* playerSheep = nullptr;
+    float hunterYaw = 0.0f;
+    float hunterPitch = 0.0f;
+    float animalYaw = 0.0f;
+    float animalPitch = 0.0f;
 
     // НАСТРОЙКА КАМЕРЫ
     Vector3 startPos = { 0.0f, 45.0f, -60.0f };
@@ -348,9 +334,7 @@ int main() {
     CameraSpawn cameraSpawn(startPos, startPitch, startYaw);
     CameraController cameraController(startPos, startYaw, startPitch);
 
-    CameraSystem cameraSystem;
-    // Инициализируем камеры после создания мира
-    cameraSystem.Init(myWorld->GetHunterHutPosition());
+    FixedCameraSystem fixedCameraSystem;
 
     EcoStatsDisplay stats(1050, 10);
 
@@ -392,6 +376,33 @@ int main() {
 
     // ========== ПЕРЕМЕННЫЕ ДЛЯ РЕГЕНЕРАЦИИ ==========
     bool isRegenerating = false;
+
+    auto FindFirstAliveWolf = [&]() -> Wolf* {
+        for (const auto& entity : myWorld->GetEntities()) {
+            if (!entity->IsAlive()) continue;
+            Wolf* wolf = dynamic_cast<Wolf*>(entity.get());
+            if (wolf) return wolf;
+        }
+        return nullptr;
+    };
+
+    auto FindFirstAliveSheep = [&]() -> Sheep* {
+        for (const auto& entity : myWorld->GetEntities()) {
+            if (!entity->IsAlive()) continue;
+            Sheep* sheep = dynamic_cast<Sheep*>(entity.get());
+            if (sheep) return sheep;
+        }
+        return nullptr;
+    };
+
+    auto ExitAllPlayerModes = [&]() {
+        if (playerHunter) playerHunter->SetPlayerControlled(false);
+        if (playerWolf) playerWolf->SetPlayerControlled(false);
+        if (playerSheep) playerSheep->SetPlayerControlled(false);
+        hunterControlMode = false;
+        wolfControlMode = false;
+        sheepControlMode = false;
+    };
 
     while (!WindowShouldClose()) {
         float dt = GetFrameTime();
@@ -445,7 +456,13 @@ int main() {
                 // ОДИН охотник, ровно в точке хижины нового мира
                 {
                     Vector3 newHut = newWorld->GetHunterHutPosition();
-                    newWorld->AddEntity(std::make_unique<Hunter>(newHut));
+                    playerHunter = new Hunter(newHut);
+                    newWorld->AddEntity(std::unique_ptr<Hunter>(playerHunter));
+                    hunterControlMode = false;
+                    wolfControlMode = false;
+                    sheepControlMode = false;
+                    playerWolf = nullptr;
+                    playerSheep = nullptr;
                 }
 
                 delete myWorld;
@@ -462,8 +479,6 @@ int main() {
                 camera.position = startPos;
                 camera.target = { 0.0f, 20.0f, 0.0f };
                 cameraController.SetPosition(startPos);
-                // Переинициализируем камеры (новая хижина)
-                cameraSystem.Init(myWorld->GetHunterHutPosition());
 
                 // ПЕРЕСЧИТЫВАЕМ НАЧАЛЬНУЮ СТАТИСТИКУ
                 int newInitialSheep = 0, newInitialWolves = 0;
@@ -491,30 +506,85 @@ int main() {
             }
         }
 
-        // ========== СИСТЕМА КАМЕР (Tab = цикл) ==========
-        cameraSystem.Update(dt);
 
-        if (IsKeyPressed(KEY_TAB)) {
-            if (cameraSystem.IsFree()) {
-                // Уходим от свободной — освобождаем мышь
-                mouseCaptured = false;
-                EnableCursor();
-            }
-            cameraSystem.OnTab(camera);
-            if (cameraSystem.IsFree()) {
-                // Вернулись к свободной — захватываем мышь
+        // ========== РЕЖИМЫ ОТ ПЕРВОГО ЛИЦА ==========
+        if (!isRegenerating && IsKeyPressed(KEY_N) && playerHunter != nullptr) {
+            bool enable = !hunterControlMode;
+            ExitAllPlayerModes();
+            if (enable) {
+                hunterControlMode = true;
+                playerHunter->SetPlayerControlled(true);
+                Vector3 viewDir = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+                hunterYaw = atan2f(viewDir.x, viewDir.z);
+                hunterPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
                 mouseCaptured = true;
                 DisableCursor();
+                fixedCameraSystem.Deactivate();
             }
         }
 
-        // WASD при фиксированной камере → вернуться к FREE
-        if (!cameraSystem.IsFree()) {
-            cameraSystem.CheckReturnToFree(camera);
-            if (cameraSystem.IsFree()) {
+        if (!isRegenerating && IsKeyPressed(KEY_M)) {
+            bool enable = !wolfControlMode;
+            ExitAllPlayerModes();
+            if (enable) {
+                playerWolf = FindFirstAliveWolf();
+                if (playerWolf) {
+                    wolfControlMode = true;
+                    playerWolf->SetPlayerControlled(true);
+                    Vector3 viewDir = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+                    animalYaw = atan2f(viewDir.x, viewDir.z);
+                    animalPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
+                    mouseCaptured = true;
+                    DisableCursor();
+                    fixedCameraSystem.Deactivate();
+                }
+            }
+        }
+
+        if (!isRegenerating && IsKeyPressed(KEY_G)) {
+            bool enable = !sheepControlMode;
+            ExitAllPlayerModes();
+            if (enable) {
+                playerSheep = FindFirstAliveSheep();
+                if (playerSheep) {
+                    sheepControlMode = true;
+                    playerSheep->SetPlayerControlled(true);
+                    Vector3 viewDir = Vector3Normalize(Vector3Subtract(camera.target, camera.position));
+                    animalYaw = atan2f(viewDir.x, viewDir.z);
+                    animalPitch = asinf(Clamp(viewDir.y, -0.95f, 0.95f));
+                    mouseCaptured = true;
+                    DisableCursor();
+                    fixedCameraSystem.Deactivate();
+                }
+            }
+        }
+
+        // ========== УПРАВЛЕНИЕ ФИКСИРОВАННЫМИ КАМЕРАМИ ==========
+        if (IsKeyPressed(KEY_TAB)) {
+            if (fixedCameraSystem.IsActive()) {
+                fixedCameraSystem.RestoreSavedCamera(camera);
+                fixedCameraSystem.Deactivate();
                 mouseCaptured = true;
                 DisableCursor();
             }
+            else {
+                fixedCameraSystem.Activate(camera);
+                mouseCaptured = false;
+                EnableCursor();
+            }
+        }
+
+        if (fixedCameraSystem.IsActive()) {
+            if (IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D)) {
+                fixedCameraSystem.NextCamera();
+            }
+            if (IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A)) {
+                fixedCameraSystem.PrevCamera();
+            }
+        }
+
+        if (fixedCameraSystem.IsActive()) {
+            fixedCameraSystem.ApplyToCamera(camera);
         }
 
         // Клавиша O - спавн 10 овец
@@ -557,13 +627,73 @@ int main() {
             myWorld->SpawnParticles(spawnPos, RED, 15, false);
         }
 
-        if (mouseCaptured && cameraSystem.IsFree()) {
+        if (hunterControlMode && playerHunter != nullptr && playerHunter->IsAlive()) {
+            Vector2 mouseDelta = GetMouseDelta();
+            hunterYaw += mouseDelta.x * 0.0035f;
+            hunterPitch -= mouseDelta.y * 0.0035f;
+            hunterPitch = Clamp(hunterPitch, -1.2f, 1.2f);
+
+            Vector3 forward = {
+                sinf(hunterYaw) * cosf(hunterPitch),
+                sinf(hunterPitch),
+                cosf(hunterYaw) * cosf(hunterPitch)
+            };
+            forward = Vector3Normalize(forward);
+            Vector3 right = { cosf(hunterYaw), 0.0f, -sinf(hunterYaw) };
+
+            Vector3 hp = playerHunter->GetPosition();
+            camera.position = { hp.x + forward.x * 0.85f, hp.y + 1.82f + forward.y * 0.10f, hp.z + forward.z * 0.85f };
+            camera.target = Vector3Add(camera.position, forward);
+            playerHunter->SetPlayerAim(forward, right, camera.position);
+
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT) || IsKeyPressed(KEY_SPACE)) {
+                playerHunter->RequestShoot();
+            }
+        } else if (wolfControlMode && playerWolf != nullptr && playerWolf->IsAlive()) {
+            Vector2 mouseDelta = GetMouseDelta();
+            animalYaw += mouseDelta.x * 0.0035f;
+            animalPitch -= mouseDelta.y * 0.0035f;
+            animalPitch = Clamp(animalPitch, -1.0f, 1.0f);
+
+            Vector3 forward = {
+                sinf(animalYaw) * cosf(animalPitch),
+                sinf(animalPitch),
+                cosf(animalYaw) * cosf(animalPitch)
+            };
+            forward = Vector3Normalize(forward);
+            Vector3 right = { cosf(animalYaw), 0.0f, -sinf(animalYaw) };
+
+            Vector3 wp = playerWolf->GetPosition();
+            camera.position = { wp.x + forward.x * 0.80f, wp.y + 0.95f, wp.z + forward.z * 0.80f };
+            camera.target = Vector3Add(camera.position, forward);
+            playerWolf->SetPlayerAim(forward, right);
+        } else if (sheepControlMode && playerSheep != nullptr && playerSheep->IsAlive()) {
+            Vector2 mouseDelta = GetMouseDelta();
+            animalYaw += mouseDelta.x * 0.0035f;
+            animalPitch -= mouseDelta.y * 0.0035f;
+            animalPitch = Clamp(animalPitch, -1.0f, 1.0f);
+
+            Vector3 forward = {
+                sinf(animalYaw) * cosf(animalPitch),
+                sinf(animalPitch),
+                cosf(animalYaw) * cosf(animalPitch)
+            };
+            forward = Vector3Normalize(forward);
+            Vector3 right = { cosf(animalYaw), 0.0f, -sinf(animalYaw) };
+
+            Vector3 sp = playerSheep->GetPosition();
+            camera.position = { sp.x + forward.x * 0.70f, sp.y + 0.95f, sp.z + forward.z * 0.70f };
+            camera.target = Vector3Add(camera.position, forward);
+            playerSheep->SetPlayerAim(forward, right);
+        } else if (mouseCaptured && !fixedCameraSystem.IsActive()) {
             cameraController.Update(dt, camera, true);
         }
 
-        cameraSpawn.Update(dt, camera);
+        if (!hunterControlMode && !wolfControlMode && !sheepControlMode) {
+            cameraSpawn.Update(dt, camera);
+        }
 
-        if (cameraSpawn.IsAnimationFinished()) {
+        if (cameraSpawn.IsAnimationFinished() && !hunterControlMode && !wolfControlMode && !sheepControlMode) {
             cameraController.SetPosition(camera.position);
         }
 
@@ -632,6 +762,31 @@ int main() {
             DrawText("PAUSED [P]", screenWidth / 2 - 80, 20, 30, RED);
         }
 
+        if (hunterControlMode) {
+            DrawRectangle(20, 70, 460, 82, (Color){0, 0, 0, 170});
+            DrawText("HUNTER FPS MODE", 35, 82, 22, GOLD);
+            DrawText("Mouse - aim | WASD - move | Shift - run", 35, 108, 18, WHITE);
+            DrawText("LMB/SPACE - shoot wolves and sheep | N - exit", 35, 130, 18, WHITE);
+            DrawCircleLines(screenWidth / 2, screenHeight / 2, 8.0f, WHITE);
+        }
+
+        if (wolfControlMode) {
+            DrawRectangle(20, 70, 460, 82, (Color){0, 0, 0, 170});
+            DrawText("WOLF FPS MODE", 35, 82, 22, RED);
+            DrawText("Mouse - look | WASD - move | Shift - run", 35, 108, 18, WHITE);
+            DrawText("LMB/SPACE - bite nearest sheep | M - exit", 35, 130, 18, WHITE);
+            DrawCircleLines(screenWidth / 2, screenHeight / 2, 8.0f, WHITE);
+        }
+
+        if (sheepControlMode) {
+            DrawRectangle(20, 70, 460, 82, (Color){0, 0, 0, 170});
+            DrawText("SHEEP FPS MODE", 35, 82, 22, LIGHTGRAY);
+            DrawText("Mouse - look | WASD - move | Shift - run", 35, 108, 18, WHITE);
+            DrawText("G - exit", 35, 130, 18, WHITE);
+            DrawCircleLines(screenWidth / 2, screenHeight / 2, 8.0f, WHITE);
+        }
+
+
         if (mouseCaptured) {
             DrawText(TextFormat("MOVE SPEED: %s", cameraController.GetSpeedModeText()),
                 screenWidth - 200, 20, 18, YELLOW);
@@ -656,25 +811,29 @@ int main() {
                 screenHeight / 2 + 30, 20, YELLOW);
         }
 
-        // ========== МИНИ-ПАНЕЛЬ КАМЕР ==========
-        cameraSystem.DrawPanel(screenWidth);
+        // ========== ОТРИСОВКА ИНТЕРФЕЙСА КАМЕР ==========
+        if (fixedCameraSystem.IsActive()) {
+            DrawRectangle(0, screenHeight - 80, 400, 80, (Color) { 0, 0, 0, 200 });
 
-        // Подсказка текущей камеры внизу (если не свободная)
-        if (!cameraSystem.IsFree()) {
-            const char* camName = cameraSystem.GetCurrentName();
-            int camNameWidth = MeasureText(camName, 22);
-            DrawRectangle(screenWidth / 2 - camNameWidth / 2 - 12,
-                          screenHeight - 45, camNameWidth + 24, 32,
-                          (Color){0, 0, 0, 180});
-            DrawText(camName, screenWidth / 2 - camNameWidth / 2,
-                     screenHeight - 40, 22, YELLOW);
+            const char* camName = fixedCameraSystem.GetCurrentCameraName();
+            int camNameWidth = MeasureText(camName, 25);
+            DrawText(camName, screenWidth / 2 - camNameWidth / 2, screenHeight - 70, 25, YELLOW);
+
+            DrawText("Press TAB to exit camera mode", screenWidth / 2 - 150, screenHeight - 40, 18, LIGHTGRAY);
+            DrawText("LEFT/RIGHT arrows to change camera", screenWidth / 2 - 170, screenHeight - 20, 16, GRAY);
+
+            char camIndexText[32];
+            snprintf(camIndexText, sizeof(camIndexText), "CAMERA %d/%d",
+                fixedCameraSystem.GetCurrentIndex() + 1, FIXED_CAMERA_COUNT);
+            int idxWidth = MeasureText(camIndexText, 15);
+            DrawText(camIndexText, screenWidth - idxWidth - 20, screenHeight - 25, 15, GRAY);
         }
 
         if (!mouseCaptured) {
             DrawText("Click in window to capture mouse", screenWidth / 2 - 200, screenHeight - 30, 18, DARKGRAY);
         }
         else {
-            DrawText("WASD+Mouse | Q/E | Shift/Ctrl | P-pause | ALT | F11 | O-Sheep | V-Wolf | TAB-cams | R-Reset",
+            DrawText("WASD+Mouse | Q/E | Shift/Ctrl | P-pause | ALT | F11 | O-Sheep | V-Wolf | TAB-cams | R-Reset | N-Hunter | M-Wolf | G-Sheep",
                 screenWidth / 2 - 450, screenHeight - 30, 18, DARKGRAY);
         }
 

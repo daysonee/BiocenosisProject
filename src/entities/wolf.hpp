@@ -65,6 +65,11 @@ private:
     float   facingAngle = 0.0f;
     Vector3 lastDrawPos = {};
 
+    bool playerControlled = false;
+    Vector3 controlForward = { 0.0f, 0.0f, 1.0f };
+    Vector3 controlRight = { 1.0f, 0.0f, 0.0f };
+    void UpdatePlayerControl(float dt, World* world);
+
     // ── Внутренние методы ─────────────────────────────────────────────────────
     void UpdateAge(float dt, World* world);
     void MoveSwimming(float dt, World* world);
@@ -121,6 +126,10 @@ public:
     void SetPackId (int id)      { packId  = id; }
     void SetHomePos(Vector3 hp)  { homePos = hp; }
     void PromoteToLeader();
+
+    void SetPlayerControlled(bool enabled);
+    bool IsPlayerControlled() const;
+    void SetPlayerAim(Vector3 forward, Vector3 right);
 
     bool CanMate() const {
         return !isSheepFrenzy // Во время френзи спаривание заблокировано
